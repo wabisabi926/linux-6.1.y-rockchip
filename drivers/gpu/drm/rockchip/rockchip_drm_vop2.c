@@ -13646,6 +13646,8 @@ static struct drm_crtc_state *vop2_crtc_duplicate_state(struct drm_crtc *crtc)
 		drm_property_blob_get(vcstate->cubic_lut_data);
 	if (vcstate->post_sharp_data)
 		drm_property_blob_get(vcstate->post_sharp_data);
+	if (vcstate->dimming_data)
+		drm_property_blob_get(vcstate->dimming_data);
 
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &vcstate->base);
 	return &vcstate->base;
@@ -13662,6 +13664,7 @@ static void vop2_crtc_destroy_state(struct drm_crtc *crtc,
 	drm_property_blob_put(vcstate->post_csc_data);
 	drm_property_blob_put(vcstate->cubic_lut_data);
 	drm_property_blob_put(vcstate->post_sharp_data);
+	drm_property_blob_put(vcstate->dimming_data);
 	kfree(vcstate);
 }
 
@@ -13857,6 +13860,11 @@ static int vop2_crtc_atomic_get_property(struct drm_crtc *crtc,
 		return 0;
 	}
 
+	if (property == private->dimming_data_prop) {
+		*val = (vcstate->dimming_data) ? vcstate->dimming_data->base.id : 0;
+		return 0;
+	}
+
 	DRM_ERROR("failed to get vop2 crtc property: %s\n", property->name);
 
 	return -EINVAL;
@@ -14014,6 +14022,16 @@ static int vop2_crtc_atomic_set_property(struct drm_crtc *crtc,
 								-1, sizeof(struct drm_color_lut),
 								&replaced);
 		state->color_mgmt_changed |= replaced;
+		return ret;
+	}
+
+	if (property == private->dimming_data_prop) {
+		ret = vop2_atomic_replace_property_blob_from_id(drm_dev,
+								&vcstate->dimming_data,
+								val,
+								-1, -1,
+								&replaced);
+		vcstate->dimming_changed |= replaced;
 		return ret;
 	}
 
@@ -15338,6 +15356,7 @@ static int vop2_create_crtc(struct vop2 *vop2, uint8_t enabled_vp_mask)
 		drm_object_attach_property(&crtc->base, private->aclk_prop, 0);
 		drm_object_attach_property(&crtc->base, private->bg_prop, 0);
 		drm_object_attach_property(&crtc->base, private->line_flag_prop, 0);
+		drm_object_attach_property(&crtc->base, private->dimming_data_prop, 0);
 		if (vp_data->feature & VOP_FEATURE_OVERSCAN) {
 			drm_object_attach_property(&crtc->base,
 						   drm_dev->mode_config.tv_left_margin_property, 100);
