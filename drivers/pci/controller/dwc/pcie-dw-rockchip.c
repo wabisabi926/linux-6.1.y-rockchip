@@ -251,8 +251,7 @@ static int rk_pcie_link_up(struct dw_pcie *pci)
 	u32 val;
 
 	val = rk_pcie_readl_apb(rk_pcie, PCIE_CLIENT_LTSSM_STATUS);
-	if ((val & (RDLH_LINKUP | SMLH_LINKUP)) == 0x30000 &&
-	    (val & GENMASK(5, 0)) == 0x11)
+	if ((val & (RDLH_LINKUP | SMLH_LINKUP)) == 0x30000)
 		return 1;
 
 	return 0;
@@ -933,10 +932,6 @@ static const struct dw_pcie_ops dw_pcie_ops = {
 	.link_up = rk_pcie_link_up,
 };
 
-static const struct dw_pcie_ops dw_pcie_ops_default_link_up = {
-	.start_link = rk_pcie_establish_link,
-};
-
 static void rk_pcie_fast_link_setup(struct rk_pcie *rk_pcie)
 {
 	u32 val;
@@ -1475,10 +1470,7 @@ static int rk_pcie_hardware_io_config(struct rk_pcie *rk_pcie)
 			return ret;
 	}
 
-	if (device_property_read_bool(dev, "rockchip,skip-reset-in-config")) {
-		dev_info(dev, "skip reset controller\n");
-	} else
-		reset_control_assert(rk_pcie->rsts);
+	reset_control_assert(rk_pcie->rsts);
 	udelay(10);
 
 	ret = clk_bulk_prepare_enable(rk_pcie->clk_cnt, rk_pcie->clks);
@@ -1638,12 +1630,7 @@ static int rk_pcie_really_probe(void *p)
 	rk_pcie->msi_vector_num = data ? data->msi_vector_num : 0;
 	rk_pcie->intx = 0xffffffff;
 	pci->dev = dev;
-	if (device_property_read_bool(dev, "rockchip,default-link-up"))
-	{
-		dev_info(dev, "using pcie default link_up because of rockchip,default-link-up\n");
-		pci->ops = &dw_pcie_ops_default_link_up;
-	} else
-		pci->ops = &dw_pcie_ops;
+	pci->ops = &dw_pcie_ops;
 	platform_set_drvdata(pdev, rk_pcie);
 
 	/* 3. firmware resource */

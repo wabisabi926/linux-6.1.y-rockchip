@@ -1501,9 +1501,9 @@ static int amdgpu_debugfs_test_ib_show(struct seq_file *m, void *unused)
 	for (i = 0; i < AMDGPU_MAX_RINGS; i++) {
 		struct amdgpu_ring *ring = adev->rings[i];
 
-		if (!ring || !drm_sched_wqueue_ready(&ring->sched))
+		if (!ring || !ring->sched.thread)
 			continue;
-		drm_sched_wqueue_stop(&ring->sched);
+		kthread_park(ring->sched.thread);
 	}
 
 	seq_printf(m, "run ib test:\n");
@@ -1517,9 +1517,9 @@ static int amdgpu_debugfs_test_ib_show(struct seq_file *m, void *unused)
 	for (i = 0; i < AMDGPU_MAX_RINGS; i++) {
 		struct amdgpu_ring *ring = adev->rings[i];
 
-		if (!ring || !drm_sched_wqueue_ready(&ring->sched))
+		if (!ring || !ring->sched.thread)
 			continue;
-		drm_sched_wqueue_start(&ring->sched);
+		kthread_unpark(ring->sched.thread);
 	}
 
 	up_write(&adev->reset_domain->sem);
@@ -1739,8 +1739,7 @@ static int amdgpu_debugfs_ib_preempt(void *data, u64 val)
 
 	ring = adev->rings[val];
 
-	if (!ring || !ring->funcs->preempt_ib ||
-	    !drm_sched_wqueue_ready(&ring->sched))
+	if (!ring || !ring->funcs->preempt_ib || !ring->sched.thread)
 		return -EINVAL;
 
 	/* the last preemption failed */
@@ -1758,7 +1757,7 @@ static int amdgpu_debugfs_ib_preempt(void *data, u64 val)
 		goto pro_end;
 
 	/* stop the scheduler */
-	drm_sched_wqueue_stop(&ring->sched);
+	kthread_park(ring->sched.thread);
 
 	resched = ttm_bo_lock_delayed_workqueue(&adev->mman.bdev);
 
@@ -1794,7 +1793,7 @@ static int amdgpu_debugfs_ib_preempt(void *data, u64 val)
 
 failure:
 	/* restart the scheduler */
-	drm_sched_wqueue_start(&ring->sched);
+	kthread_unpark(ring->sched.thread);
 
 	up_read(&adev->reset_domain->sem);
 

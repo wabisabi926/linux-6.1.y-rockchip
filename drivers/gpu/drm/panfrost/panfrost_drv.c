@@ -278,7 +278,7 @@ static int panfrost_ioctl_submit(struct drm_device *dev, void *data,
 
 	ret = drm_sched_job_init(&job->base,
 				 &file_priv->sched_entity[slot],
-				 1, NULL);
+				 NULL);
 	if (ret)
 		goto out_put_job;
 
@@ -414,10 +414,6 @@ static int panfrost_ioctl_madvise(struct drm_device *dev, void *data,
 
 	bo = to_panfrost_bo(gem_obj);
 
-	ret = dma_resv_lock_interruptible(bo->base.base.resv, NULL);
-	if (ret)
-		goto out_put_object;
-
 	mutex_lock(&pfdev->shrinker_lock);
 	mutex_lock(&bo->mappings.lock);
 	if (args->madv == PANFROST_MADV_DONTNEED) {
@@ -455,8 +451,7 @@ static int panfrost_ioctl_madvise(struct drm_device *dev, void *data,
 out_unlock_mappings:
 	mutex_unlock(&bo->mappings.lock);
 	mutex_unlock(&pfdev->shrinker_lock);
-	dma_resv_unlock(bo->base.base.resv);
-out_put_object:
+
 	drm_gem_object_put(gem_obj);
 	return ret;
 }
@@ -551,6 +546,8 @@ static const struct drm_driver panfrost_drm_driver = {
 	.minor			= 2,
 
 	.gem_create_object	= panfrost_gem_create_object,
+	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
+	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
 	.gem_prime_import_sg_table = panfrost_gem_prime_import_sg_table,
 	.gem_prime_mmap		= drm_gem_prime_mmap,
 };
