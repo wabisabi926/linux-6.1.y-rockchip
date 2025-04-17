@@ -702,7 +702,6 @@ struct sta_info {
 	struct codel_params cparams;
 
 	u8 reserved_tid;
-	s8 amsdu_mesh_control;
 
 	struct cfg80211_chan_def tdls_chandef;
 

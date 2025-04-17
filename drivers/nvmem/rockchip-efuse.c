@@ -484,7 +484,6 @@ disable_clks:
 
 static struct nvmem_config econfig = {
 	.name = "rockchip-efuse",
-	.add_legacy_fixed_of_cells = true,
 	.stride = 1,
 	.word_size = 1,
 	.read_only = true,

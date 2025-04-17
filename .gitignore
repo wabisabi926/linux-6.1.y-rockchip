@@ -10,9 +10,9 @@
 #
 # Normal rules (sorted alphabetically)
 #
-.*
 *.a
 *.asn1.[ch]
+*.bin
 *.bz2
 *.c.[012]*.*
 *.dt.yaml
