@@ -4,7 +4,7 @@
 #
 
 menuconfig SERDES_DISPLAY_CHIP_NOVO
-	tristate "novo expander device support"
+	bool "novo expander device support"
 	default y
 	help
 	  Enable this to be able to choose the drivers for controlling the
@@ -12,7 +12,7 @@ menuconfig SERDES_DISPLAY_CHIP_NOVO
 
 if SERDES_DISPLAY_CHIP_NOVO
 config SERDES_DISPLAY_CHIP_NOVO_NCA9539
-	tristate "novo nca9539 expander"
+	bool "novo nca9539 expander"
 	default y
 	help
 	  To support novo nca9539 expander.

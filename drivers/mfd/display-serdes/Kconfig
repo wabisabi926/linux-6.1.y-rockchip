@@ -5,14 +5,10 @@
 comment "driver for different display serdes"
 
 menuconfig MFD_SERDES_DISPLAY
-	tristate "rockchip display serdes drivers support"
+	bool "rockchip display serdes drivers support"
 	select DRM_PANEL_BRIDGE
 	select DRM_KMS_HELPER
 	select DRM_MIPI_DSI
-	select SERDES_DISPLAY_CHIP_ROHM
-	select SERDES_DISPLAY_CHIP_MAXIM
-	select SERDES_DISPLAY_CHIP_ROCKCHIP
-	select SERDES_DISPLAY_CHIP_NOVO
 	select MFD_CORE
 	select REGMAP_I2C
 	select GENERIC_PINCTRL_GROUPS

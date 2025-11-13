@@ -681,11 +681,11 @@ s32 gt1x_init_panel(void)
 
 void gt1x_select_addr(void)
 {
-	if (gpio_is_valid(gt1x_rst_gpio))
+	if (!IS_ERR_OR_NULL(gt1x_rst_gpio))
 		GTP_GPIO_OUTPUT(GTP_RST_PORT, 0);
 	GTP_GPIO_OUTPUT(GTP_INT_PORT, gt1x_i2c_client->addr == 0x14);
 	usleep_range(2000, 3000);
-	if (gpio_is_valid(gt1x_rst_gpio))
+	if (!IS_ERR_OR_NULL(gt1x_rst_gpio))
 		GTP_GPIO_OUTPUT(GTP_RST_PORT, 1);
 	usleep_range(2000, 3000);
 }
@@ -2378,18 +2378,21 @@ s32 gt1x_init(void)
 	ret = gt1x_get_chip_type();
 	if (ret != 0) {
 		GTP_ERROR("Get chip type failed!");
+		goto init_err;
 	}
 
 	/* read version information */
 	ret = gt1x_read_version(&gt1x_version);
 	if (ret != 0) {
 		GTP_ERROR("Get verision failed!");
+		goto init_err;
 	}
 
 	/* init and send configs */
 	ret = gt1x_init_panel();
 	if (ret != 0) {
 		GTP_ERROR("Init panel failed.");
+		goto init_err;
 	}
 
 	gt1x_workqueue = create_singlethread_workqueue("gt1x_workthread");
@@ -2427,6 +2430,8 @@ s32 gt1x_init(void)
 #if GTP_WITH_STYLUS
 	gt1x_pen_init();
 #endif
+
+init_err:
 	if (ret != 0)
 		gt1x_power_switch(SWITCH_OFF);
 
