@@ -42,6 +42,7 @@
 #define B_AX_DBI_WFLAG			BIT(16)
 #define B_AX_DBI_WREN_MSK		GENMASK(15, 12)
 #define B_AX_DBI_ADDR_MSK		GENMASK(11, 2)
+#define B_AX_DBI_2LSB			GENMASK(1, 0)
 #define R_AX_DBI_WDATA			0x1094
 #define R_AX_DBI_RDATA			0x1098
 
@@ -150,6 +151,7 @@
 #define B_AX_HD1ISR_IND_INT_EN		BIT(26)
 #define B_AX_HD0ISR_IND_INT_EN		BIT(25)
 #define B_AX_HS0ISR_IND_INT_EN		BIT(24)
+#define B_AX_HS0ISR_IND_INT_EN_WKARND	BIT(23)
 #define B_AX_RETRAIN_INT_EN		BIT(21)
 #define B_AX_RPQBD_FULL_INT_EN		BIT(20)
 #define B_AX_RDU_INT_EN			BIT(19)
@@ -1004,9 +1006,9 @@ rtw89_pci_rxbd_increase(struct rtw89_pci_rx_ring *rx_ring, u32 cnt)
 
 static inline struct rtw89_pci_tx_data *RTW89_PCI_TX_SKB_CB(struct sk_buff *skb)
 {
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct rtw89_tx_skb_data *data = RTW89_TX_SKB_CB(skb);
 
-	return (struct rtw89_pci_tx_data *)info->status.status_driver_data;
+	return (struct rtw89_pci_tx_data *)data->hci_priv;
 }
 
 static inline struct rtw89_pci_tx_bd_32 *
