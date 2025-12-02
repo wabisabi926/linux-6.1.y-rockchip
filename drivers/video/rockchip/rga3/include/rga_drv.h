@@ -40,6 +40,7 @@
 #include <linux/timer.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
+#include <linux/vmalloc.h>
 #include <linux/wait.h>
 #include <linux/pm_runtime.h>
 #include <linux/sched/mm.h>
@@ -88,7 +89,7 @@
 
 #define DRIVER_MAJOR_VERISON		1
 #define DRIVER_MINOR_VERSION		3
-#define DRIVER_REVISION_VERSION		9
+#define DRIVER_REVISION_VERSION		10
 #define DRIVER_PATCH_VERSION
 
 #define DRIVER_VERSION (STR(DRIVER_MAJOR_VERISON) "." STR(DRIVER_MINOR_VERSION) \
@@ -370,6 +371,8 @@ struct rga_scheduler_t {
 	int core;
 
 	struct rga_timer timer;
+
+	struct rga_dma_buf_pool *cmd_buf_pool;
 };
 
 struct rga_request {

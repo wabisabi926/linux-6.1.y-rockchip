@@ -208,6 +208,27 @@ static int sditf_get_set_fmt(struct v4l2_subdev *sd,
 			priv->cap_info.offset_x = 0;
 			priv->cap_info .offset_y = 0;
 		}
+		if (cif_dev->chip_id < CHIP_RV1126B_CIF) {
+			switch (fmt->format.code) {
+			case MEDIA_BUS_FMT_Y14_1X14:
+				fmt->format.code = MEDIA_BUS_FMT_Y12_1X12;
+				break;
+			case MEDIA_BUS_FMT_SBGGR14_1X14:
+				fmt->format.code = MEDIA_BUS_FMT_SBGGR12_1X12;
+				break;
+			case MEDIA_BUS_FMT_SGBRG14_1X14:
+				fmt->format.code = MEDIA_BUS_FMT_SGBRG12_1X12;
+				break;
+			case MEDIA_BUS_FMT_SGRBG14_1X14:
+				fmt->format.code = MEDIA_BUS_FMT_SGRBG12_1X12;
+				break;
+			case MEDIA_BUS_FMT_SRGGB14_1X14:
+				fmt->format.code = MEDIA_BUS_FMT_SRGGB12_1X12;
+				break;
+			default:
+				break;
+			}
+		}
 		priv->cap_info.width = fmt->format.width;
 		priv->cap_info.height = fmt->format.height;
 		pixm.pixelformat = rkcif_mbus_pixelcode_to_v4l2(fmt->format.code);
@@ -342,10 +363,15 @@ static void sditf_free_buf(struct sditf_priv *priv)
 	if (priv->hdr_cfg.hdr_mode == HDR_X2) {
 		rkcif_free_rx_buf(&cif_dev->stream[0], cif_dev->stream[0].rx_buf_num);
 		rkcif_free_rx_buf(&cif_dev->stream[1], cif_dev->stream[1].rx_buf_num);
+		cif_dev->rdbk_rx_buf[RDBK_L] = NULL;
+		cif_dev->rdbk_rx_buf[RDBK_M] = NULL;
 	} else if (priv->hdr_cfg.hdr_mode == HDR_X3) {
 		rkcif_free_rx_buf(&cif_dev->stream[0], cif_dev->stream[0].rx_buf_num);
 		rkcif_free_rx_buf(&cif_dev->stream[1], cif_dev->stream[1].rx_buf_num);
 		rkcif_free_rx_buf(&cif_dev->stream[2], cif_dev->stream[2].rx_buf_num);
+		cif_dev->rdbk_rx_buf[RDBK_L] = NULL;
+		cif_dev->rdbk_rx_buf[RDBK_M] = NULL;
+		cif_dev->rdbk_rx_buf[RDBK_S] = NULL;
 	} else {
 		rkcif_free_rx_buf(&cif_dev->stream[0], cif_dev->stream[0].rx_buf_num);
 	}
@@ -1172,7 +1198,6 @@ void sditf_disable_immediately(struct sditf_priv *priv)
 				sditf_channel_disable(priv, 1);
 		}
 	}
-	priv->is_toisp_off = true;
 	if (priv->cif_dev->switch_info.is_use_switch)
 		priv->cif_dev->switch_info.is_active = false;
 }
@@ -1274,6 +1299,7 @@ static int sditf_stop_stream(struct sditf_priv *priv)
 	priv->toisp_inf.ch_info[0].is_valid = false;
 	priv->toisp_inf.ch_info[1].is_valid = false;
 	priv->toisp_inf.ch_info[2].is_valid = false;
+	priv->is_toisp_off = true;
 	return 0;
 }
 
@@ -1322,6 +1348,8 @@ static int sditf_s_power(struct v4l2_subdev *sd, int on)
 	if (on && atomic_inc_return(&priv->power_cnt) > 1)
 		return 0;
 
+	rkcif_update_sensor_info(&cif_dev->stream[0]);
+
 	if (on)
 		rkcif_update_unite_extend_pixel(cif_dev);
 	if (cif_dev->chip_id >= CHIP_RK3588_CIF) {
@@ -1343,6 +1371,26 @@ static int sditf_s_power(struct v4l2_subdev *sd, int on)
 		mutex_unlock(&cif_dev->stream_lock);
 	}
 	return ret;
+}
+
+static int sditf_check_toolbuf_return(struct rkcif_stream *stream, struct rkcif_rx_buffer *rx_buf)
+{
+	struct rkcif_tools_vdev *tools_vdev = stream->tools_vdev;
+	unsigned long flags;
+
+	if (tools_vdev) {
+		spin_lock_irqsave(&stream->tools_vdev->vbq_lock, flags);
+
+		if (rx_buf->use_cnt)
+			rx_buf->use_cnt--;
+		if (rx_buf->use_cnt) {
+			spin_unlock_irqrestore(&stream->tools_vdev->vbq_lock, flags);
+			return false;
+		}
+		spin_unlock_irqrestore(&stream->tools_vdev->vbq_lock, flags);
+	}
+
+	return true;
 }
 
 static int sditf_s_rx_buffer(struct v4l2_subdev *sd,
@@ -1422,7 +1470,8 @@ static int sditf_s_rx_buffer(struct v4l2_subdev *sd,
 		is_free = true;
 	}
 
-	if (!is_free && (!dbufs->is_switch) && stream->state == RKCIF_STATE_STREAMING) {
+	if (!is_free && (!dbufs->is_switch) && stream->state == RKCIF_STATE_STREAMING &&
+	    sditf_check_toolbuf_return(stream, rx_buf)) {
 		list_add_tail(&rx_buf->list, &buf_stream->rx_buf_head);
 		rkcif_assign_check_buffer_update_toisp(stream);
 		if (cif_dev->resume_mode != RKISP_RTT_MODE_ONE_FRAME &&

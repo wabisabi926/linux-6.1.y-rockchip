@@ -36,6 +36,10 @@ int rkcif_debug;
 module_param_named(debug, rkcif_debug, int, 0644);
 MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
+bool rkcif_frm_toisp_protect = true;
+module_param_named(toisp_protect, rkcif_frm_toisp_protect, bool, 0644);
+MODULE_PARM_DESC(toisp_protect, "frame protect of toisp");
+
 static char rkcif_version[RKCIF_VERNO_LEN];
 module_param_string(version, rkcif_version, RKCIF_VERNO_LEN, 0444);
 MODULE_PARM_DESC(version, "version number");
@@ -1512,7 +1516,9 @@ void rkcif_set_sensor_streamon_in_sync_mode(struct rkcif_device *cif_dev)
 
 	if (sync_config->mode == RKCIF_MASTER_MASTER ||
 	    sync_config->mode == RKCIF_MASTER_SLAVE ||
-	    sync_config->mode == RKCIF_SOFT_SYNC) {
+	    sync_config->mode == RKCIF_SOFT_SYNC ||
+	    sync_config->mode == RKCIF_EXT_MASTER ||
+	    sync_config->mode == RKCIF_EXT_SLAVE) {
 		for (i = 0; i < sync_config->slave.count; i++) {
 			dev = sync_config->slave.cif_dev[i];
 			is_streaming = sync_config->slave.is_streaming[i];

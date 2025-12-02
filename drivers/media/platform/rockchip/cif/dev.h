@@ -232,6 +232,7 @@ struct rkcif_tools_buffer {
 };
 
 extern int rkcif_debug;
+extern bool rkcif_frm_toisp_protect;
 
 /*
  * struct rkcif_sensor_info - Sensor infomations
@@ -397,6 +398,8 @@ struct rkcif_irq_stats {
 	u64 frm_end_cnt[RKCIF_MAX_STREAM_MIPI];
 	u64 not_active_buf_cnt[RKCIF_MAX_STREAM_MIPI];
 	u64 trig_simult_cnt[RKCIF_MAX_STREAM_MIPI];
+	u64 bus0_err;
+	u64 bus1_err;
 	u64 all_err_cnt;
 };
 
@@ -478,12 +481,14 @@ enum rkcif_capture_mode {
 struct rkcif_rx_buffer {
 	int buf_idx;
 	struct list_head list;
+	struct list_head list_tool;
 	struct list_head list_free;
 	struct rkisp_rx_buf dbufs;
 	struct rkcif_dummy_buffer dummy;
 	struct rkisp_thunderboot_shmem shmem;
 	u64 fe_timestamp;
 	bool is_init[RKCIF_MAX_DEV];
+	int use_cnt;
 };
 
 enum rkcif_dma_en_mode {
@@ -675,6 +680,7 @@ struct rkcif_stream {
 	bool				is_m_online_fb_res;
 	bool				is_fb_first_frame;
 	bool				is_pause_stream;
+	bool				is_force_update;
 };
 
 struct rkcif_lvds_subdev {
@@ -1052,6 +1058,7 @@ struct rkcif_device {
 	u32				early_line;
 	int				isp_runtime_max;
 	int				sensor_linetime;
+	u64				readout_ns;
 	u32				err_state;
 	struct rkcif_err_state_work	err_state_work;
 	struct rkcif_sensor_work	sensor_work;

@@ -2001,7 +2001,7 @@ static const struct vop_ctrl rv1126b_ctrl_data = {
 	.bcsh_r2y_en = VOP_REG(RK3366_LIT_BCSH_CTRL, 0x1, 7),
 
 	.bcsh_color_bar = VOP_REG(RK3366_LIT_BCSH_COL_BAR, 0xffffff, 0),
-	.bcsh_brightness = VOP_REG(RK3366_LIT_BCSH_BCS, 0xff, 0),
+	.bcsh_brightness = VOP_REG(RK3366_LIT_BCSH_BCS, 0x7f, 0),
 	.bcsh_contrast = VOP_REG(RK3366_LIT_BCSH_BCS, 0x1ff, 8),
 	.bcsh_sat_con = VOP_REG(RK3366_LIT_BCSH_BCS, 0x3ff, 20),
 	.bcsh_sin_hue = VOP_REG(RK3366_LIT_BCSH_H, 0x1ff, 0),
@@ -2039,8 +2039,10 @@ static const struct vop_wb_regs rv1126b_vop_wb_regs = {
 };
 
 static const int rv1126_wb_intrs[] = {
-	VOPL_WB_UV_FIFO_FULL_INTR,
 	VOPL_WB_YRGB_FIFO_FULL_INTR,
+	VOPL_WB_UV_FIFO_FULL_INTR,
+	0,
+	0,
 	VOPL_WB_COMPLETE_INTR,
 };
 
@@ -2219,7 +2221,7 @@ static const struct vop_ctrl rk3506_ctrl_data = {
 	.bcsh_r2y_en = VOP_REG(RK3366_LIT_BCSH_CTRL, 0x1, 7),
 
 	.bcsh_color_bar = VOP_REG(RK3366_LIT_BCSH_COL_BAR, 0xffffff, 0),
-	.bcsh_brightness = VOP_REG(RK3366_LIT_BCSH_BCS, 0xff, 0),
+	.bcsh_brightness = VOP_REG(RK3366_LIT_BCSH_BCS, 0x7f, 0),
 	.bcsh_contrast = VOP_REG(RK3366_LIT_BCSH_BCS, 0x1ff, 8),
 	.bcsh_sat_con = VOP_REG(RK3366_LIT_BCSH_BCS, 0x3ff, 20),
 	.bcsh_sin_hue = VOP_REG(RK3366_LIT_BCSH_H, 0x1ff, 0),

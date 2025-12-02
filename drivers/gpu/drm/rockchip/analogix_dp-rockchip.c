@@ -27,6 +27,7 @@
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_self_refresh_helper.h>
 #include <drm/drm_simple_kms_helper.h>
 
 #include "rockchip_drm_drv.h"
@@ -270,7 +271,7 @@ static int rockchip_dp_loader_protect(struct rockchip_drm_sub_dev *sub_dev, bool
 		return 0;
 
 	if (plat_data->panel)
-		panel_simple_loader_protect(plat_data->panel);
+		rockchip_drm_panel_loader_protect(plat_data->panel, on);
 
 	ret = analogix_dp_loader_protect(dp->adp);
 	if (ret) {
@@ -634,6 +635,38 @@ static int rockchip_dp_drm_create_encoder(struct rockchip_dp_device *dp)
 	return 0;
 }
 
+static void rockchip_dp_drm_self_refresh_helper_init(struct rockchip_dp_device *dp)
+{
+	struct drm_encoder *encoder = &dp->encoder.encoder;
+	struct drm_crtc *crtc;
+	int ret;
+
+	if (!dp->plat_data.disable_psr) {
+		drm_for_each_crtc(crtc, encoder->dev) {
+			if (drm_encoder_crtc_ok(encoder, crtc)) {
+				ret = drm_self_refresh_helper_init(crtc);
+				if (ret)
+					dev_warn(dp->dev,
+						 "Failed to init self refresh helper for crtc-%d\n",
+						 drm_crtc_index(crtc));
+			}
+		}
+	}
+}
+
+static void rockchip_dp_drm_self_refresh_helper_cleanup(struct rockchip_dp_device *dp)
+{
+	struct drm_encoder *encoder = &dp->encoder.encoder;
+	struct drm_crtc *crtc;
+
+	if (!dp->plat_data.disable_psr) {
+		drm_for_each_crtc(crtc, encoder->dev) {
+			if (drm_encoder_crtc_ok(encoder, crtc))
+				drm_self_refresh_helper_cleanup(crtc);
+		}
+	}
+}
+
 static int rockchip_dp_bind(struct device *dev, struct device *master,
 			    void *data)
 {
@@ -651,6 +684,8 @@ static int rockchip_dp_bind(struct device *dev, struct device *master,
 		}
 
 		dp->plat_data.encoder = &dp->encoder.encoder;
+
+		rockchip_dp_drm_self_refresh_helper_init(dp);
 	}
 
 	ret = analogix_dp_bind(dp->adp, drm_dev);
@@ -672,6 +707,8 @@ static void rockchip_dp_unbind(struct device *dev, struct device *master,
 
 	if (dp->audio_pdev)
 		platform_device_unregister(dp->audio_pdev);
+	if (!dp->plat_data.left)
+		rockchip_dp_drm_self_refresh_helper_cleanup(dp);
 	analogix_dp_unbind(dp->adp);
 	dp->encoder.encoder.funcs->destroy(&dp->encoder.encoder);
 }
@@ -733,6 +770,7 @@ static int rockchip_dp_probe(struct platform_device *pdev)
 	dp->plat_data.convert_to_origin_mode = drm_mode_convert_to_origin_mode;
 	dp->plat_data.skip_connector = rockchip_dp_skip_connector(bridge);
 	dp->plat_data.bridge = bridge;
+	dp->plat_data.disable_psr = device_property_read_bool(dp->dev, "rockchip,disable-psr");
 
 	ret = rockchip_dp_of_probe(dp);
 	if (ret < 0)

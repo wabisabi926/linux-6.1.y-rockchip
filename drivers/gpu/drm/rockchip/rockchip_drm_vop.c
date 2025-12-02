@@ -6,7 +6,6 @@
 
 #include <linux/clk.h>
 #include <linux/component.h>
-#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/fixp-arith.h>
 #include <linux/iopoll.h>
@@ -37,7 +36,6 @@
 #include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_probe_helper.h>
-#include <drm/drm_self_refresh_helper.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_writeback.h>
 
@@ -249,33 +247,9 @@ struct vop_win {
 	struct drm_property *name_prop;
 };
 
-/*
- * max two jobs a time, one is running(writing back),
- * another one will run in next frame.
- */
-#define VOP_WB_JOB_MAX 2
-
-struct vop_wb_job {
-	bool pending;
-	/**
-	 * @fs_vsync_cnt: frame start vysnc counter,
-	 * used to get the write back complete event;
-	 */
-	uint32_t fs_vsync_cnt;
-};
-
 struct vop_wb {
 	struct drm_writeback_connector conn;
 	const struct vop_wb_regs *regs;
-	struct vop_wb_job jobs[VOP_WB_JOB_MAX];
-	uint8_t job_index;
-
-	/**
-	 * @job_lock:
-	 *
-	 * spinlock to protect the job between vop_wb_commit and vop_wb_handler in isr.
-	 */
-	spinlock_t job_lock;
 };
 
 enum vop_wb_format {
@@ -309,12 +283,16 @@ struct vop {
 	struct drm_property *feature_prop;
 
 	bool is_iommu_enabled;
-	bool is_iommu_needed;
 	bool is_enabled;
 	bool support_multi_area;
 
 	bool aclk_rate_reset;
 	unsigned long aclk_rate;
+
+	/**
+	 * @enabled_win_mask: Bitmask of enabled wins attached to the VOP
+	 */
+	uint32_t enabled_win_mask;
 
 	u32 version;
 	u32 background;
@@ -646,6 +624,7 @@ static bool vop_is_allwin_disabled(struct vop *vop)
 
 static void vop_win_disable(struct vop *vop, struct vop_win *win)
 {
+	vop->enabled_win_mask &= ~BIT(win->win_id);
 	/*
 	 * FIXUP: some of the vop scale would be abnormal after windows power
 	 * on/off so deinit scale to scale_none mode.
@@ -772,8 +751,6 @@ static int vop_convert_afbc_format(uint32_t format)
 		DRM_WARN_ONCE("unsupported AFBC format[%08x]\n", format);
 		return -EINVAL;
 	}
-
-	return -EINVAL;
 }
 
 static bool is_uv_swap(uint32_t bus_format, uint32_t output_mode)
@@ -1794,7 +1771,6 @@ static int vop_wb_connector_init(struct vop *vop)
 
 	vop->wb.regs = vop_data->wb->regs;
 	vop->wb.conn.encoder.possible_crtcs = drm_crtc_mask(crtc);
-	spin_lock_init(&vop->wb.job_lock);
 	drm_connector_helper_add(&vop->wb.conn.base, &vop_wb_connector_helper_funcs);
 
 	ret = drm_writeback_connector_init(vop->drm_dev, &vop->wb.conn,
@@ -1824,9 +1800,9 @@ static void vop_wb_irqs_enable(struct vop *vop)
 {
 	const struct vop_data *vop_data = vop->data;
 	const struct vop_intr *intr = vop_data->wb_intr;
-	uint32_t irqs = VOPL_WB_UV_FIFO_FULL_INTR | VOPL_WB_YRGB_FIFO_FULL_INTR;
+	uint32_t irqs = VOPL_WB_UV_FIFO_FULL_INTR | VOPL_WB_YRGB_FIFO_FULL_INTR |
+			VOPL_WB_COMPLETE_INTR;
 
-	VOP_INTR_SET_TYPE2(vop, intr, clear, irqs, 1);
 	VOP_INTR_SET_TYPE2(vop, intr, enable, irqs, 1);
 }
 
@@ -1834,17 +1810,26 @@ static uint32_t vop_read_and_clear_wb_irqs(struct vop *vop)
 {
 	const struct vop_data *vop_data = vop->data;
 	const struct vop_intr *intr = vop_data->wb_intr;
-	uint32_t irqs = VOPL_WB_UV_FIFO_FULL_INTR | VOPL_WB_YRGB_FIFO_FULL_INTR;
-	uint32_t val;
+	uint32_t irqs = VOPL_WB_UV_FIFO_FULL_INTR | VOPL_WB_YRGB_FIFO_FULL_INTR |
+			VOPL_WB_COMPLETE_INTR;
+	uint32_t val, ret;
 
 	if (!intr)
 		return 0;
 
 	val = VOP_INTR_GET_TYPE2(vop, intr, status, irqs);
+	ret = val;
+
+	/* For RV1126B, it should use VOPL_WB_YRGB_FIFO_FULL_INTR to
+	 * clear all wb interrupt.
+	 */
+	if (vop->version == VOP_VERSION_RV1126B)
+		val |= VOPL_WB_YRGB_FIFO_FULL_INTR;
+
 	if (val)
 		VOP_INTR_SET_TYPE2(vop, intr, clear, val, 1);
 
-	return val;
+	return ret;
 }
 
 static void vop_wb_commit(struct drm_crtc *crtc)
@@ -1855,7 +1840,6 @@ static void vop_wb_commit(struct drm_crtc *crtc)
 	struct drm_writeback_connector *wb_conn = &wb->conn;
 	struct drm_connector_state *conn_state = wb_conn->base.state;
 	struct vop_wb_connector_state *wb_state;
-	unsigned long flags;
 	uint32_t fifo_throd;
 	uint8_t r2y;
 
@@ -1872,14 +1856,11 @@ static void vop_wb_commit(struct drm_crtc *crtc)
 				 fb->pitches[0], &wb_state->yrgb_addr);
 
 		drm_writeback_queue_job(wb_conn, conn_state);
-		conn_state->writeback_job = NULL;
-
-		spin_lock_irqsave(&wb->job_lock, flags);
-		wb->jobs[wb->job_index].pending = true;
-		wb->job_index++;
-		if (wb->job_index >= VOP_WB_JOB_MAX)
-			wb->job_index = 0;
-		spin_unlock_irqrestore(&wb->job_lock, flags);
+		if (!vop->enabled_win_mask) {
+			drm_warn(vop->drm_dev, "Writeback can not work when all plane are disabled!");
+			drm_writeback_signal_completion(&vop->wb.conn, 0);
+			return;
+		}
 
 		fifo_throd = fb->pitches[0] >> 4;
 		if (fifo_throd > vop->data->wb->fifo_depth)
@@ -1917,33 +1898,6 @@ static void __maybe_unused vop_wb_disable(struct vop *vop)
 
 	VOP_CTRL_SET2(vop, wb, enable, 0);
 	vop_wb_cfg_done(vop);
-}
-
-static void vop_wb_handler(struct vop *vop)
-{
-	struct vop_wb *wb = &vop->wb;
-	struct vop_wb_job *job;
-	unsigned long flags;
-	uint8_t i;
-
-	if (!wb->regs)
-		return;
-
-	/* In one shot mode, wb_en is auto disable */
-	spin_lock_irqsave(&wb->job_lock, flags);
-	for (i = 0; i < VOP_WB_JOB_MAX; i++) {
-		job = &wb->jobs[i];
-		if (job->pending) {
-			job->fs_vsync_cnt++;
-
-			if (job->fs_vsync_cnt == 2) {
-				job->pending = false;
-				job->fs_vsync_cnt = 0;
-				drm_writeback_signal_completion(&vop->wb.conn, 0);
-			}
-		}
-	}
-	spin_unlock_irqrestore(&wb->job_lock, flags);
 }
 
 static void vop_crtc_load_lut(struct drm_crtc *crtc)
@@ -2761,6 +2715,8 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	VOP_WIN_SET(vop, win, gate, 1);
 	spin_unlock(&vop->reg_lock);
 
+	vop->enabled_win_mask |= BIT(win->win_id);
+
 	if (rockchip_afbc(plane, fb->modifier))
 		afbc_en = true;
 	rockchip_drm_dbg_thread_info(vop->dev, VOP_DEBUG_PLANE,
@@ -2769,11 +2725,6 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 				     dsp_w, dsp_h, dest->x1, dest->y1, vop_plane_state->zpos, &fb->format->format,
 				     afbc_en ? "[AFBC]" : "",
 				     &vop_plane_state->yrgb_mst);
-	/*
-	 * spi interface(vop_plane_state->yrgb_kvaddr, fb->pixel_format,
-	 * actual_w, actual_h)
-	 */
-	vop->is_iommu_needed = true;
 }
 
 static int vop_plane_atomic_async_check(struct drm_plane *plane,
@@ -3184,6 +3135,7 @@ static int vop_crtc_loader_protect(struct drm_crtc *crtc, bool on, void *data)
 	struct vop *vop = to_vop(crtc);
 	int sys_status = drm_crtc_index(crtc) ?
 				SYS_STATUS_LCDC1 : SYS_STATUS_LCDC0;
+	struct vop_win *win;
 
 	if (on == vop->loader_protect)
 		return 0;
@@ -3205,6 +3157,11 @@ static int vop_crtc_loader_protect(struct drm_crtc *crtc, bool on, void *data)
 
 		rockchip_set_system_status(sys_status);
 		vop_initial(crtc);
+		if (crtc->primary) {
+			win = to_vop_win(crtc->primary);
+			if (VOP_WIN_GET(vop, win, enable))
+				vop->enabled_win_mask |= BIT(win->win_id);
+		}
 		drm_crtc_vblank_on(crtc);
 		vop->loader_protect = true;
 	} else {
@@ -4842,7 +4799,7 @@ static void vop_tv_config_update(struct drm_crtc *crtc,
 
 	if (vop_data->feature & VOP_FEATURE_OUTPUT_10BIT)
 		brightness = interpolate(0, -128, 100, 127, s->tv_state->brightness);
-	else if (VOP_MAJOR(vop->version) == 2 && VOP_MINOR(vop->version) == 6) /* px30 vopb */
+	else if (vop->version == VOP_VERSION_PX30_BIG || vop->version >= VOP_VERSION_RK3506)
 		brightness = interpolate(0, -64, 100, 63, s->tv_state->brightness);
 	else
 		brightness = interpolate(0, -32, 100, 31, s->tv_state->brightness);
@@ -4984,7 +4941,7 @@ static void vop_crtc_atomic_flush(struct drm_crtc *crtc,
 
 	vop_cfg_update(crtc, old_crtc_state);
 
-	if (!vop->is_iommu_enabled && vop->is_iommu_needed) {
+	if (!vop->is_iommu_enabled) {
 		int ret;
 
 		if (s->mode_update)
@@ -5330,6 +5287,24 @@ static void vop_handle_vblank(struct vop *vop)
 		drm_flip_work_commit(&vop->fb_unref_work, system_unbound_wq);
 }
 
+static void vop_wb_complete(struct vop *vop)
+{
+	struct vop_wb *wb = &vop->wb;
+	bool wb_oneframe_mode;
+	bool wb_en;
+
+	wb_en = VOP_CTRL_GET2(vop, wb, enable);
+	wb_oneframe_mode = VOP_CTRL_GET2(vop, wb, one_frame_mode);
+	/*
+	 * The write back should work in one shot mode,
+	 * stop when write back complete in next vsync.
+	 */
+	if (wb_en && !wb_oneframe_mode)
+		vop_wb_disable(vop);
+
+	drm_writeback_signal_completion(&vop->wb.conn, 0);
+}
+
 static irqreturn_t vop_isr(int irq, void *data)
 {
 	struct vop *vop = data;
@@ -5366,7 +5341,7 @@ static irqreturn_t vop_isr(int irq, void *data)
 	spin_unlock_irqrestore(&vop->irq_lock, flags);
 
 	/* This is expected for vop iommu irqs, since the irq is shared */
-	if (!active_irqs)
+	if (!active_irqs && !wb_irqs)
 		goto out_disable;
 
 	if (active_irqs & DSP_HOLD_VALID_INTR) {
@@ -5391,7 +5366,6 @@ static irqreturn_t vop_isr(int irq, void *data)
 		VOP_CTRL_SET(vop, level2_overlay_en, vop->pre_overlay);
 		VOP_CTRL_SET(vop, alpha_hard_calc, vop->pre_overlay);
 		spin_unlock_irqrestore(&vop->irq_lock, flags);
-		vop_wb_handler(vop);
 		drm_crtc_handle_vblank(crtc);
 		vop_handle_vblank(vop);
 		active_irqs &= ~(FS_INTR | FS_FIELD_INTR);
@@ -5423,6 +5397,12 @@ static irqreturn_t vop_isr(int irq, void *data)
 		active_irqs = wb_irqs;
 		ERROR_HANDLER(VOPL_WB_UV_FIFO_FULL);
 		ERROR_HANDLER(VOPL_WB_YRGB_FIFO_FULL);
+		if (active_irqs & VOPL_WB_COMPLETE_INTR) {
+			active_irqs &= ~VOPL_WB_COMPLETE_INTR;
+			vop_wb_complete(vop);
+		}
+		if (active_irqs)
+			DRM_ERROR("Unknown writeback IRQs: %02x\n", active_irqs);
 	}
 
 out_disable:
@@ -5746,11 +5726,6 @@ static int vop_create_crtc(struct vop *vop)
 	VOP_ATTACH_MODE_CONFIG_PROP(tv_bottom_margin_property, 100);
 #undef VOP_ATTACH_MODE_CONFIG_PROP
 	vop_crtc_create_feature_property(vop, crtc);
-	ret = drm_self_refresh_helper_init(crtc);
-	if (ret)
-		DRM_DEV_DEBUG_KMS(vop->dev,
-				  "Failed to init %s with SR helpers %d, ignoring\n",
-				  crtc->name, ret);
 
 	if (vop->lut_regs) {
 		u16 *r_base, *g_base, *b_base;
@@ -5758,8 +5733,10 @@ static int vop_create_crtc(struct vop *vop)
 
 		vop->lut = devm_kmalloc_array(dev, lut_len, sizeof(*vop->lut),
 					      GFP_KERNEL);
-		if (!vop->lut)
+		if (!vop->lut) {
+			ret = -ENOMEM;
 			goto err_unregister_crtc_funcs;
+		}
 
 		if (vop_of_init_display_lut(vop)) {
 			for (i = 0; i < lut_len; i++) {
@@ -5801,8 +5778,6 @@ static void vop_destroy_crtc(struct vop *vop)
 	struct drm_crtc *crtc = &vop->rockchip_crtc.crtc;
 	struct drm_device *drm_dev = vop->drm_dev;
 	struct drm_plane *plane, *tmp;
-
-	drm_self_refresh_helper_cleanup(crtc);
 
 	of_node_put(crtc->port);
 
