@@ -575,7 +575,8 @@
 
 &mdio1 {
 	rgmii_phy1: phy@0 {
-		compatible = "ethernet-phy-ieee802.3-c22";
+        /* 删除下面这行，不要强制指定 c22 */
+		/* compatible = "ethernet-phy-ieee802.3-c22"; */
 		reg = <0x0>;
 	};
 };
