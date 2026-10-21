@@ -449,11 +449,11 @@
 	hdmirx-det-gpios = <&gpio2 13 GPIO_ACTIVE_LOW>;
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi1 {
+&hdptxphy1 {
 	status = "okay";
 };
 

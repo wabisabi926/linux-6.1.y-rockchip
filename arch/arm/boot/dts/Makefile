@@ -1190,10 +1190,17 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rv1126b-evb1-v11-dual-4k.dtb \
 	rv1126b-evb1-v11-fastboot-emmc.dtb \
 	rv1126b-evb1-v11-fastboot-emmc-projector.dtb \
+	rv1126b-evb1-v11-fastboot-emmc-uvc.dtb \
 	rv1126b-evb1-v11-fastboot-spi-nand.dtb \
 	rv1126b-evb1-v11-fastboot-spi-nor.dtb \
 	rv1126b-evb1-v11-spi-nor.dtb \
 	rv1126b-evb1-v11-5x-cam.dtb \
+	rv1126b-evb1-v12.dtb \
+	rv1126b-evb1-v12-dual-cam-csi0.dtb \
+	rv1126b-evb1-v12-irfpa.dtb \
+	rv1126b-evb1-v12-spi-nand.dtb \
+	rv1126b-evb1-v12-uvc.dtb \
+	rv1126b-evb1-v12-uvc-winhello.dtb \
 	rv1126b-evb2-v10.dtb \
 	rv1126b-evb2-v10-dv.dtb \
 	rv1126b-evb2-v10-mcu-k350c4516t.dtb \
@@ -1204,11 +1211,15 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rv1126b-evb2-v10-tb-400w-spi-nor.dtb \
 	rv1126b-evb2-v10-tb-800w-emmc.dtb \
 	rv1126b-evb2-v12.dtb \
+	rv1126b-evb2-v12-aoa-extram.dtb \
 	rv1126b-evb2-v12-aov-dual-cam.dtb \
 	rv1126b-evb2-v12-aov-dual-cam-spi-nor.dtb \
+	rv1126b-evb2-v12-cvr.dtb \
 	rv1126b-evb2-v12-fastboot-emmc.dtb \
 	rv1126b-evb2-v12-fastboot-spi-nand.dtb \
 	rv1126b-evb2-v12-fastboot-spi-nor.dtb \
+	rv1126b-evb2-v12-spi-nand.dtb \
+	rv1126b-evb2-v12-tb-dual-cam-emmc.dtb \
 	rv1126b-evb3-v10.dtb \
 	rv1126b-evb4-v10.dtb \
 	rv1126b-iotest-v10.dtb \
@@ -1216,6 +1227,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rv1126bp-evb-v14-dual-cam.dtb \
 	rv1126bp-evb1-v12.dtb \
 	rv1126bp-evb1-v12-fastboot-emmc.dtb \
+	rv1126bp-evb2-v10.dtb \
 	rk3036-evb.dtb \
 	rk3036-evb1-ddr3-v10.dtb \
 	rk3036-kylin.dtb \
@@ -1281,6 +1293,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3506g-evb1-v10-rgb-Q7050ITH2641AA1T.dtb \
 	rk3506g-evb1-v10-sii9022-bt1120-to-hdmi.dtb \
 	rk3506g-evb1-v10-sii9022-rgb2hdmi.dtb \
+	rk3506g-evb1-v10-spi-nor.dtb \
 	rk3506g-evb2-v10.dtb \
 	rk3506g-luckfox-lyra-plus-sd.dtb \
 	rk3506g-iotest-v10.dtb \
@@ -1292,6 +1305,18 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3528-evb2-ddr3-v10.dtb \
 	rk3528-evb3-lp4x-v10.dtb \
 	rk3528-evb4-ddr4-v10.dtb \
+	rk3538-demo2-v10.dtb \
+	rk3538-demo3-v10.dtb \
+	rk3538-demo4-v10.dtb \
+	rk3538-evb1-ddr4-v10.dtb \
+	rk3538-iotest-lpddr3-v10.dtb \
+	rk3538-test1-lp4x-v10.dtb \
+	rk3538-test2-ddr3-v10.dtb \
+	rk3539-demo2-v10.dtb \
+	rk3539-evb1-ddr4-v10.dtb \
+	rk3539-iotest-lpddr3-v10.dtb \
+	rk3539-test1-lp4x-v10.dtb \
+	rk3539-test2-ddr3-v10.dtb \
 	rk3562-evb2-ddr4-v10.dtb
 dtb-$(CONFIG_ARCH_S3C24XX) += \
 	s3c2416-smdk2416.dtb
@@ -1774,3 +1799,7 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-vegman-n110.dtb \
 	aspeed-bmc-vegman-rx20.dtb \
 	aspeed-bmc-vegman-sx20.dtb
+
+subdir-y := $(dts-dirs) overlay
+
+# Armbian: Incremental: assuming overlay targets are already in the Makefile

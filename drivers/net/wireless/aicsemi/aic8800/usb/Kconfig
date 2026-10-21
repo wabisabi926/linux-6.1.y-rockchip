@@ -2,6 +2,7 @@ config AIC8800_USB_WLAN
 	bool "AIC8800 USB WLAN Support"
 	default y
 	depends on AIC8800_SUPPORT
+	depends on USB
 	help
 	  Support AICSemi AIC8800 USB wireless.
 

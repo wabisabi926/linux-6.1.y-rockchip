@@ -261,24 +261,18 @@ rwnx_add_wmm_info_ie(struct sk_buff *skb, u8 qosinfo)
 static u8 rwnx_ac_from_wmm(int ac)
 {
 	switch (ac) {
+	default:
+		WARN_ON_ONCE(1);
+		fallthrough;
 	case 0:
 		return AC_BE;
-        break;
 	case 1:
 		return AC_BK;
-        break;
 	case 2:
 		return AC_VI;
-        break;
 	case 3:
 		return AC_VO;
-        break;
-    default:
-		WARN_ON_ONCE(1);
-        break;
 	}
-
-    return 0;
 }
 
 static void

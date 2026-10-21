@@ -116,11 +116,6 @@ struct hci_nokia_neg_evt {
 #define SETUP_BAUD_RATE		921600
 #define INIT_BAUD_RATE		120000
 
-struct hci_nokia_radio_hdr {
-	u8	evt;
-	u8	dlen;
-} __packed;
-
 struct nokia_bt_dev {
 	struct hci_uart hu;
 	struct serdev_device *serdev;
@@ -506,7 +501,7 @@ static int nokia_close(struct hci_uart *hu)
 	return 0;
 }
 
-/* Enqueue frame for transmittion (padding, crc, etc) */
+/* Enqueue frame for transmission (padding, crc, etc) */
 static int nokia_enqueue(struct hci_uart *hu, struct sk_buff *skb)
 {
 	struct nokia_bt_dev *btdev = hu->priv;

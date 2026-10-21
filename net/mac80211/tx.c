@@ -644,6 +644,12 @@ ieee80211_tx_h_select_key(struct ieee80211_tx_data *tx)
 	else
 		tx->key = NULL;
 
+	if (info->flags & IEEE80211_TX_CTL_HW_80211_ENCAP) {
+		if (tx->key && tx->key->flags & KEY_FLAG_UPLOADED_TO_HARDWARE)
+			info->control.hw_key = &tx->key->conf;
+		return TX_CONTINUE;
+	}
+
 	if (tx->key) {
 		bool skip_hw = false;
 
@@ -1469,7 +1475,7 @@ static void ieee80211_txq_enqueue(struct ieee80211_local *local,
 {
 	struct fq *fq = &local->fq;
 	struct fq_tin *tin = &txqi->tin;
-	u32 flow_idx = fq_flow_idx(fq, skb);
+	u32 flow_idx;
 
 	ieee80211_set_skb_enqueue_time(skb);
 
@@ -1485,6 +1491,7 @@ static void ieee80211_txq_enqueue(struct ieee80211_local *local,
 			IEEE80211_TX_INTCFL_NEED_TXPROCESSING;
 		__skb_queue_tail(&txqi->frags, skb);
 	} else {
+		flow_idx = fq_flow_idx(fq, skb);
 		fq_tin_enqueue(fq, tin, flow_idx, skb,
 			       fq_skb_free_func);
 	}
@@ -3875,6 +3882,7 @@ begin:
 	 * The key can be removed while the packet was queued, so need to call
 	 * this here to get the current key.
 	 */
+	info->control.hw_key = NULL;
 	r = ieee80211_tx_h_select_key(&tx);
 	if (r != TX_CONTINUE) {
 		ieee80211_free_txskb(&local->hw, skb);
@@ -4099,7 +4107,9 @@ void __ieee80211_schedule_txq(struct ieee80211_hw *hw,
 
 	spin_lock_bh(&local->active_txq_lock[txq->ac]);
 
-	has_queue = force || txq_has_queue(txq);
+	has_queue = force ||
+		    (!test_bit(IEEE80211_TXQ_STOP, &txqi->flags) &&
+		     txq_has_queue(txq));
 	if (list_empty(&txqi->schedule_order) &&
 	    (has_queue || ieee80211_txq_keep_active(txqi))) {
 		/* If airtime accounting is active, always enqueue STAs at the
@@ -5223,6 +5233,15 @@ ieee80211_beacon_add_mbssid(struct sk_buff *skb, struct beacon_data *beacon,
 	if (i < beacon->mbssid_ies->cnt) {
 		skb_put_data(skb, beacon->mbssid_ies->elem[i].data,
 			     beacon->mbssid_ies->elem[i].len);
+
+		if (beacon->rnr_ies && beacon->rnr_ies->cnt) {
+			skb_put_data(skb, beacon->rnr_ies->elem[i].data,
+				     beacon->rnr_ies->elem[i].len);
+
+			for (i = beacon->mbssid_ies->cnt; i < beacon->rnr_ies->cnt; i++)
+				skb_put_data(skb, beacon->rnr_ies->elem[i].data,
+					     beacon->rnr_ies->elem[i].len);
+		}
 		return;
 	}
 
@@ -5260,6 +5279,7 @@ ieee80211_beacon_get_ap(struct ieee80211_hw *hw,
 	 * tail length, maximum TIM length and multiple BSSID length
 	 */
 	mbssid_len = ieee80211_get_mbssid_beacon_len(beacon->mbssid_ies,
+						     beacon->rnr_ies,
 						     ema_index);
 
 	skb = dev_alloc_skb(local->tx_headroom + beacon->head_len +
@@ -5520,7 +5540,7 @@ ieee80211_beacon_get_template_ema_list(struct ieee80211_hw *hw,
 {
 	struct ieee80211_ema_beacons *ema_beacons = NULL;
 
-	WARN_ON(__ieee80211_beacon_get(hw, vif, NULL, false, link_id, 0,
+	WARN_ON(__ieee80211_beacon_get(hw, vif, NULL, true, link_id, 0,
 				       &ema_beacons));
 
 	return ema_beacons;

@@ -1,5 +1,6 @@
 #include <linux/slab.h>
 #include "aicwf_debug.h"
+#include "aicwf_txq_prealloc.h"
 
 struct prealloc_txq{
     int prealloced;
@@ -47,6 +48,8 @@ void *aicwf_usb_prealloc_txq_alloc(size_t size)
 
     return prealloc_txq.txq;
 }
+EXPORT_SYMBOL(aicwf_usb_prealloc_txq_alloc);
+
 void aicwf_prealloc_txq_free(void)
 {
     if(prealloc_txq.txq != NULL)
@@ -56,6 +59,3 @@ void aicwf_prealloc_txq_free(void)
         prealloc_txq.txq = NULL;
     }
 }
-
-EXPORT_SYMBOL(aicwf_usb_prealloc_txq_alloc);
-

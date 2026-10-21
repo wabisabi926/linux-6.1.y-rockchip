@@ -13,25 +13,6 @@
 	model = "Radxa ZERO 3";
 	compatible ="radxa,zero3-aic8800ds2", "rockchip,rk3566";
 
-	wireless_wlan: wireless-wlan {
-		compatible = "wlan-platdata";
-		rockchip,grf = <&grf>;
-		WIFI,poweren_gpio = <&gpio0 RK_PC0 GPIO_ACTIVE_HIGH>;
-		status = "okay";
-	};
-
-	wireless_bluetooth: wireless-bluetooth {
-		compatible = "bluetooth-platdata";
-		uart_rts_gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default", "rts_gpio";
-		pinctrl-0 = <&uart1m0_rtsn>;
-		pinctrl-1 = <&uart1_gpios>;
-		BT,reset_gpio    = <&gpio0 RK_PC1 GPIO_ACTIVE_HIGH>;
-		BT,wake_gpio     = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>;
-		BT,wake_host_irq = <&gpio0 RK_PB3 GPIO_ACTIVE_HIGH>;
-		status = "okay";
-	};
-
 	sdio_pwrseq: sdio-pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		pinctrl-names = "default";
@@ -55,10 +36,24 @@
 &uart1 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn>;
+	/* RTS is required for hardware flow control; the AIC8800 BT firmware
+	 * is configured with flow control enabled (uart_flowctrl=1).
+	 */
+	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn &uart1m0_rtsn>;
+
+	bluetooth {
+		compatible = "aic,aic8800-bt";
+		enable-gpios = <&gpio0 RK_PC1 GPIO_ACTIVE_HIGH>;       /* BT_REG_ON */
+		device-wakeup-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_HIGH>; /* HOST_WAKE_BT */
+		host-wakeup-gpios = <&gpio0 RK_PB3 GPIO_ACTIVE_HIGH>;   /* BT_WAKE_HOST */
+		max-speed = <1500000>;
+		post-power-on-delay-ms = <100>;
+	};
 };
 
 &sdmmc1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
 	supports-sdio;
 	bus-width = <4>;
 	disable-wp;
@@ -75,6 +70,11 @@
 	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_cmd &sdmmc1_clk>;
 	sd-uhs-sdr104;
 	status = "okay";
+
+	wifi@1 {
+		compatible = "aic,aic8800-sdio";
+		reg = <1>;
+	};
 };
 
 &pinctrl {
@@ -83,12 +83,6 @@
 			rockchip,pins = <0 RK_PC0 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 
-	};
-
-	wireless-bluetooth {
-		uart1_gpios: uart1-gpios {
-			rockchip,pins = <2 RK_PB5 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
 	};
 
 	sdmmc1 {

@@ -23,6 +23,8 @@ struct rkisp_isp_params_val_v35 {
 	struct rkisp_dummy_buffer buf_info[RKISP_INFO2DDR_BUF_MAX];
 	u32 buf_info_owner;
 	u32 buf_info_cnt;
+	u32 buf_info_w_offs;
+	u32 buf_info_v_offs;
 	int buf_info_idx;
 
 	struct rkisp_dummy_buffer buf_aiawb[RKISP_BUFFER_MAX];
@@ -38,9 +40,7 @@ struct rkisp_isp_params_val_v35 {
 	struct rkisp_dummy_buffer buf_vpsl[RKISP_BUFFER_MAX];
 	struct rkisp_dummy_buffer buf_y_src[RKISP_BUFFER_MAX];
 
-	struct rkisp_dummy_buffer buf_bay3d_iir_l2;
-	struct rkisp_dummy_buffer buf_bay3d_wgt_l2;
-	struct rkisp_dummy_buffer buf_bay3d_ds_l2;
+	struct rkisp_dummy_buffer buf_bay3d_iir_drop;
 
 	spinlock_t buf_lock;
 	struct list_head iir_list;
@@ -49,6 +49,7 @@ struct rkisp_isp_params_val_v35 {
 	struct list_head vpsl_list;
 	struct list_head y_src_list;
 	struct rkisp_dummy_buffer *pbuf_bay3d_iir;
+	struct rkisp_dummy_buffer *pbuf_bay3d_iir_rec;
 	struct rkisp_dummy_buffer *pbuf_gain_wr;
 	struct rkisp_dummy_buffer *pbuf_gain_rd;
 	struct rkisp_dummy_buffer *pbuf_aipre_gain;
@@ -57,20 +58,23 @@ struct rkisp_isp_params_val_v35 {
 	struct rkisp_dummy_buffer *pbuf_y_src;
 
 	u32 bay3d_iir_rw_fmt;
-	u32 bay3d_iir_pk_offs;
-	u32 bay3d_iir_pk_stride;
-	u32 bay3d_iir_stride;
-	u32 bay3d_iir_size;
+	u32 bay3d_iir_pk_offs[ISP_UNITE_MAX];
+	u32 bay3d_iir_pk_stride[ISP_UNITE_MAX];
+	u32 bay3d_iir_stride[ISP_UNITE_MAX];
+	u32 bay3d_iir_size[ISP_UNITE_MAX];
+	u32 bay3d_iir_offs[ISP_UNITE_MAX];
 	int bay3d_iir_cnt;
 	int bay3d_iir_idx;
 	int bay3d_iir_cur_idx;
 
-	u32 bay3d_ds_size;
+	u32 bay3d_ds_size[ISP_UNITE_MAX];
+	u32 bay3d_ds_offs[ISP_UNITE_MAX];
 	int bay3d_ds_cnt;
 	int bay3d_ds_idx;
 	int bay3d_ds_cur_idx;
 
-	u32 bay3d_wgt_size;
+	u32 bay3d_wgt_size[ISP_UNITE_MAX];
+	u32 bay3d_wgt_offs[ISP_UNITE_MAX];
 	int bay3d_wgt_cnt;
 	int bay3d_wgt_idx;
 	int bay3d_wgt_cur_idx;
@@ -100,9 +104,9 @@ struct rkisp_isp_params_val_v35 {
 	u32 vpsl_sig_offs[VPSL_SIG_CHN_MAX];
 	u32 vpsl_sig_stride[VPSL_SIG_CHN_MAX];
 
-	u32 hist_blk_num;
-	u32 enh_row;
-	u32 enh_col;
+	u32 hist_blk_num[ISP_UNITE_MAX];
+	u32 enh_row[ISP_UNITE_MAX];
+	u32 enh_col[ISP_UNITE_MAX];
 
 	bool yraw_sel;
 	bool is_ae0_fe;
@@ -110,7 +114,8 @@ struct rkisp_isp_params_val_v35 {
 	bool is_af_fe;
 	bool is_awb_fe;
 	bool is_aiawb_fe;
-	bool is_aiisp_l2_buf;
+	bool is_bay3d_bypass;
+	bool is_bay3d_l2_bypass;
 };
 
 #if IS_ENABLED(CONFIG_VIDEO_ROCKCHIP_ISP_VERSION_V35)

@@ -835,7 +835,7 @@
 	status = "okay";
 
 	wifi: wifi@1 {
-		compatible = "aicsemi,aic8800-fdrv";
+		compatible = "aic,aic8800-sdio";
 		reg = <1>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <RK_PA7 IRQ_TYPE_LEVEL_HIGH>;
@@ -981,11 +981,12 @@
 	pinctrl-0 = <&uart2m1_xfer &uart2m1_ctsn &uart2m1_rtsn>;
 
 	bluetooth: bluetooth {
-		compatible = "aicsemi,aic8800-btlpm";
+		compatible = "aic,aic8800-bt";
 		max-speed = <1500000>;
-		device-wakeup-gpios = <&gpio1 RK_PC0 GPIO_ACTIVE_HIGH>; // HOST_WAKE_BT
-		shutdown-gpios = <&gpio1 RK_PC1 GPIO_ACTIVE_HIGH>;  // BT_REG_ON
-		host-wakeup-gpios = <&gpio1 RK_PC2 GPIO_ACTIVE_HIGH>;  // BT_WAKE_HOST
+		device-wakeup-gpios = <&gpio1 RK_PC0 GPIO_ACTIVE_HIGH>; /* HOST_WAKE_BT */
+		host-wakeup-gpios = <&gpio1 RK_PC2 GPIO_ACTIVE_HIGH>;   /* BT_WAKE_HOST */
+		enable-gpios = <&gpio1 RK_PC1 GPIO_ACTIVE_HIGH>;        /* BT_REG_ON */
+		post-power-on-delay-ms = <100>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&bt_host_wake &bt_wake &bt_enable_h>;
 	};

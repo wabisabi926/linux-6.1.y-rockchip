@@ -96,6 +96,7 @@
 			248 249 250 251 252 253 254 255
 		>;
 		default-brightness-level = <200>;
+		status = "disabled";
 	};
 
 	/delete-node/ chosen;
@@ -257,6 +258,16 @@
 			linux,cma-default;
 		};
 
+		drm_logo: drm-logo@0 {
+			compatible = "rockchip,drm-logo";
+			reg = <0x0 0x0 0x0 0x0>;
+		};
+
+		drm_cubic_lut: drm-cubic-lut@0 {
+			compatible = "rockchip,drm-cubic-lut";
+			reg = <0x0 0x0 0x0 0x0>;
+		};
+
 		ramoops: ramoops@40110000 {
 			compatible = "ramoops";
 			/* 0x40110000 to 0x401f0000 is for ramoops */
@@ -321,7 +332,6 @@
 		gpios = <&gpio1 RK_PC1 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&typec5v_pwren_h>;
-		regulator-boot-on;
 		regulator-name = "vbus5v0_typec";
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
@@ -407,16 +417,42 @@
 	status = "okay";
 };
 
-&csi2_dphy0_hw {
-	status = "okay";
-};
-
-&csi2_dphy1_hw {
-	status = "okay";
-};
-
+/* RK628 -> mipi0 */
 &csi2_dcphy0 {
 	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csi2_dcphy0_in: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&rk628d_out>;
+				data-lanes = <1 2 3 4>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csi2_dcphy0_out: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&mipi0_csi2_in>;
+			};
+		};
+	};
+};
+
+/* IMX415-0 -> mipi1 */
+&csi2_dphy0 {
+	status = "disabled";
 
 	ports {
 		#address-cells = <1>;
@@ -426,10 +462,10 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			hdmi_mipi_in: endpoint@1 {
-				reg = <1>;
-				remote-endpoint = <&hdmirx_out>;
-				data-lanes = <1 2 3 4>;
+			csi2_dphy0_in: endpoint@1 {
+					reg = <1>;
+					remote-endpoint = <&imx415_0_out>;
+					data-lanes = <1 2 3 4>;
 			};
 		};
 
@@ -440,7 +476,40 @@
 
 			csi2_dphy0_out: endpoint@0 {
 				reg = <0>;
-				remote-endpoint = <&mipi0_csi2_input>;
+				remote-endpoint = <&mipi1_csi2_in>;
+			};
+		};
+	};
+};
+
+/* IMX415-1 -> mipi3 */
+&csi2_dphy3 {
+	status = "disabled";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csi2_dphy3_in: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&imx415_1_out>;
+				data-lanes = <1 2 3 4>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csi2_dphy3_out: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&mipi3_csi2_in>;
 			};
 		};
 	};
@@ -451,8 +520,11 @@
 };
 
 &display_subsystem {
-	clocks = <&hdptxphy_hdmi>;
+	clocks = <&hdptxphy>;
 	clock-names = "hdmi0_phy_pll";
+	devfreq = <&dmc>;
+	memory-region = <&drm_logo>, <&drm_cubic_lut>;
+	memory-region-names = "drm-logo", "drm-cubic-lut";
 };
 
 &dmc {
@@ -470,152 +542,8 @@
 	status = "okay";
 };
 
-&dp0_in_vp2 {
+&dp0_in_vp0 {
 	status = "okay";
-};
-
-/*
- * DSI screen: 480x360
- */
-&dsi {
-	status = "disabled";
-	rockchip,lane-rate = <480>;
-
-	dsi_panel: panel@0 {
-		status = "okay";
-		compatible = "simple-panel-dsi";
-		power-supply = <&vcc_3v3_s0>;
-		reg = <0>;
-		backlight = <&backlight>;
-
-		prepare-delay-ms = <10>;
-		reset-delay-ms = <40>;
-		init-delay-ms = <40>;
-		enable-delay-ms = <40>;
-		disable-delay-ms = <50>;
-		unprepare-delay-ms = <40>;
-
-		reset-gpios = <&gpio0 RK_PD1 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default";
-
-		width-mm = <41>;
-		height-mm = <31>;
-
-		dsi,flags = <(MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
-			      MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET)>;
-
-		dsi,format = <MIPI_DSI_FMT_RGB888>;
-		dsi,lanes = <2>;
-
-		panel-init-sequence = [
-			39 00 06 FF 77 01 00 00 13
-			15 00 02 EF 08
-			39 00 06 FF 77 01 00 00 10
-			39 00 03 C0 2C 00
-    			39 00 03 C1 10 0C
-    			39 00 03 C2 21 0A
-    			15 00 02 CC 10
-			39 00 11 B0 00 12 9A 0E 12 07 0B 08 09 26 05 51 0F 69 30 1C
-			39 00 11 B1 00 12 9B 0D 10 06 0B 09 08 25 03 50 0F 68 30 1C
-    			39 00 06 FF 77 01 00 00 11
-    			15 00 02 B0 5D
-    			15 00 02 B1 66
-    			15 00 02 B2 84
-    			15 00 02 B3 80
-    			15 00 02 B5 4E
-    			15 00 02 B7 85
-    			15 00 02 B8 20
-    			15 00 02 C1 78
-    			15 00 02 C2 78
-    			15 00 02 D0 88
-			39 00 04 E0 00 00 02
-			39 00 0C E1 06 A0 08 A0 05 A0 07 A0 00 44 44
-    			39 00 0D E2 00 00 44 44 01 A0 00 00 01 A0 00 00
-    			39 00 05 E3 00 00 11 11
-    			39 00 03 E4 44 44
-    			39 00 11 E5 0D 79 0A A0 0F 7B 0A A0 09 75 0A A0 0B 77 0A A0
-    			39 00 05 E6 00 00 11 11
-    			39 00 03 E7 44 44
-    			39 00 11 E8 0C 78 0A A0 0E 7A 0A A0 08 74 0A A0 0A 76 0A A0
-    			39 00 03 E9 36 00
-    			39 00 08 EB 00 01 E4 E4 44 88 40
-    			39 00 11 ED FF 45 67 FA 01 2B AB FF FF BA B2 10 AF 76 54 FF
-    			39 00 07 EF 10 0D 04 08 3F 1F
-    			39 00 06 FF 77 01 00 00 00
-    			39 00 06 FF 77 01 00 00 13
-    			39 00 03 E8 00 0E
-    			05 78 01 11     /* Sleep Out + 120 ms (0x78 = 120 ms) */
-    			39 0A 03 E8 00 0C
-    			39 00 03 E8 00 00
-    			39 00 06 FF 77 01 00 00 00
-    			05 14 01 29     /* Display ON + 20 ms (0x14 = 20 ms) */
-		];
-
-		panel-exit-sequence = [
-			05 00 01 28
-			05 78 01 10
-		];
-
-		display-timings {
-			native-mode = <&timing0>;
-
-			timing0: timing0 {
-				clock-frequency = <11760000>;
-				hactive = <480>;
-				vactive = <360>;
-				hfront-porch = <10>;
-				hsync-len = <5>;
-				hback-porch = <20>;
-				vfront-porch = <5>;
-				vsync-len = <5>;
-				vback-porch = <10>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <0>;
-				pixelclk-active = <0>;
-			};
-		};
-
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			port@0 {
-				reg = <0>;
-				panel_in_dsi: endpoint {
-					remote-endpoint = <&dsi_out_panel>;
-				};
-			};
-		};
-	};
-
-	ports {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		port@1 {
-			reg = <1>;
-			dsi_out_panel: endpoint {
-				remote-endpoint = <&panel_in_dsi>;
-			};
-		};
-	};
-};
-
-&dsi_in_vopl {
-	status = "disabled";
-};
-
-&dsi_in_vp0 {
-	status = "disabled";
-};
-
-&dsi_in_vp1 {
-	status = "okay";
-};
-
-&dsi_in_vp2 {
-	status = "disabled";
 };
 
 &gmac0 {
@@ -663,17 +591,55 @@
 };
 
 &hdmi {
-	cec-enable;
-	rockchip,sda-falling-delay-ns = <360>;
+	/* DDC I2C speed: 50khz */
+	//ddc-i2c-scl-high-time-ns = <9625>;
+	//ddc-i2c-scl-low-time-ns = <10000>;
+
+	/* DDC I2C speed: 100khz */
+	//ddc-i2c-scl-high-time-ns = <4812>;
+	//ddc-i2c-scl-low-time-ns = <5000>;
+
 	status = "okay";
 };
 
-&hdmi_in_vp0 {
+&hdmi_in_vp1 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi {
+&hdptxphy {
 	status = "okay";
+};
+
+&i2c1 {
+	imx415_0: imx415_0@37 {
+		compatible = "sony,imx415";
+		reg = <0x37>;
+
+		clocks = <&cru CLK_MIPI_CAMERAOUT_M0>;
+		clock-names = "xvclk";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_clk0m0_clk0>;
+		power-domains = <&power RK3576_PD_VI>;
+
+		power-gpios = <&gpio3 RK_PD6 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>;
+
+		rockchip,camera-hdr-mode = <5>; //HDR_X2
+		rockchip,camera-module-index = <0>;
+		rockchip,camera-module-facing = "back";
+		rockchip,camera-module-name = "CMK-OT2022-PX1";
+		rockchip,camera-module-lens-name = "IR0147-50IRC-8M-F20";
+
+		status = "disabled";
+
+		port {
+			imx415_0_out: endpoint {
+				remote-endpoint = <&csi2_dphy0_in>;
+				data-lanes = <1 2 3 4>;
+			};
+		};
+	};
 };
 
 &i2c2 {
@@ -684,6 +650,41 @@
 		reg = <0x68>;
 		#clock-cells = <1>;
 		clock-output-names = "clk_32kout";
+	};
+};
+
+&i2c3 {
+	status = "okay";
+	pinctrl-0 = <&i2c3m2_xfer>;
+
+	imx415_1: imx415_1@37 {
+		compatible = "sony,imx415";
+		reg = <0x37>;
+
+		clocks = <&cru CLK_MIPI_CAMERAOUT_M2>;
+		clock-names = "xvclk";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cam_clk2m0_clk2>;
+		power-domains = <&power RK3576_PD_VI>;
+
+		power-gpios = <&gpio3 RK_PC6 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio3 RK_PC5 GPIO_ACTIVE_LOW>;
+
+		rockchip,camera-hdr-mode = <5>; //HDR_X2
+		rockchip,camera-module-index = <1>;
+		rockchip,camera-module-facing = "back";
+		rockchip,camera-module-name = "CMK-OT2022-PX1";
+		rockchip,camera-module-lens-name = "IR0147-50IRC-8M-F20";
+
+		status = "disabled";
+
+		port {
+			imx415_1_out: endpoint {
+				remote-endpoint = <&csi2_dphy3_in>;
+				data-lanes = <1 2 3 4>;
+			};
+		};
 	};
 };
 
@@ -708,17 +709,6 @@
 		pinctrl-0 = <&sai2m0_mclk>;
 		status = "okay";
 	};
-
-	/* touchscreen */
-	gt911: gt911@5d {
-		compatible = "goodix,gt911";
-		reg = <0x5d>;
-		interrupt-parent = <&gpio4>;
-		interrupts = <RK_PC6 IRQ_TYPE_EDGE_FALLING>;
-		reset-gpios = <&gpio0 RK_PC1 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default";
-		status = "disabled";
-	};
 };
 
 /* io: 1v8, to 40p con */
@@ -739,14 +729,18 @@
 		reg = <0x51>;
 		status = "okay";
 
+		cec-enable;
 		i2s-enable-default;
+		#sound-dai-cells = <0>;
 
 		interrupt-parent = <&gpio4>;
 		interrupts = <RK_PB4 IRQ_TYPE_LEVEL_HIGH>;
 		enable-gpios = <&gpio4 RK_PA3 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&gpio4 RK_PA5 GPIO_ACTIVE_LOW>;
 		plugin-det-gpios = <&gpio4 RK_PB5 GPIO_ACTIVE_LOW>;
+
 		continues-clk = <1>;
+		scaler-en = <1>;
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&rk628_pins &ref_clk2_clk2>;
@@ -763,8 +757,8 @@
 		rockchip,camera-module-lens-name = "RK628-CSI";
 		
 		port {
-			hdmirx_out: endpoint {
-				remote-endpoint = <&hdmi_mipi_in>;
+			rk628d_out: endpoint {
+				remote-endpoint = <&csi2_dcphy0_in>;
 				data-lanes = <1 2 3 4>;
 			};
 		};
@@ -794,6 +788,7 @@
 			source-pdos = <PDO_FIXED(5000, 2000, PDO_FIXED_USB_COMM)>;
 			mode-switch = <&dp>;
 
+			/* DP related config */
 			altmodes {
 				#address-cells = <1>;
 				#size-cells = <0>;
@@ -859,6 +854,7 @@
 	};
 };
 
+/* mipi0 -> lvds */
 &mipi0_csi2 {
 	status = "okay";
 
@@ -871,7 +867,39 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			mipi0_csi2_input: endpoint@1 {
+			mipi0_csi2_in: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&csi2_dcphy0_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi0_csi2_out: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&rkcif_mipi_lvds_in>;
+			};
+		};
+	};
+};
+
+/* mipi1 -> lvds1 */
+&mipi1_csi2 {
+	status = "disabled";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi1_csi2_in: endpoint@1 {
 				reg = <1>;
 				remote-endpoint = <&csi2_dphy0_out>;
 			};
@@ -882,9 +910,41 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			mipi0_csi2_output: endpoint@0 {
+			mipi1_csi2_out: endpoint@0 {
 				reg = <0>;
-				remote-endpoint = <&cif_mipi_in1>;
+				remote-endpoint = <&rkcif_mipi_lvds1_in>;
+			};
+		};
+	};
+};
+
+/* mipi3 -> lvds3 */
+&mipi3_csi2 {
+	status = "disabled";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi3_csi2_in: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&csi2_dphy3_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi3_csi2_out: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&rkcif_mipi_lvds3_in>;
 			};
 		};
 	};
@@ -969,7 +1029,7 @@
 
 /* backlight */
 &pwm0_2ch_0 {
-	status = "okay";
+	status = "disabled";
 	pinctrl-0 = <&pwm0m0_ch0>;
 };
 
@@ -1034,23 +1094,58 @@
 	status = "okay";
 };
 
+/* From RK628D */
 &rkcif_mipi_lvds {
 	status = "okay";
 	rockchip,cif-monitor;
 
 	port {
-		cif_mipi_in1: endpoint {
-			remote-endpoint = <&mipi0_csi2_output>;
+		rkcif_mipi_lvds_in: endpoint {
+			remote-endpoint = <&mipi0_csi2_out>;
 		};
 	};
 };
 
-&rkcif_mipi_lvds_sditf {
-	status = "okay";
+/* From IMX415-0 */
+&rkcif_mipi_lvds1 {
+	status = "disabled";
 
 	port {
-		mipi_lvds_sditf_out: endpoint {
-			remote-endpoint = <&isp0_vir0_in>;
+		rkcif_mipi_lvds1_in: endpoint {
+			remote-endpoint = <&mipi1_csi2_out>;
+		};
+	};
+};
+
+/* From IMX415-1 */
+&rkcif_mipi_lvds3 {
+	status = "disabled";
+
+	port {
+		rkcif_mipi_lvds3_in: endpoint {
+			remote-endpoint = <&mipi3_csi2_out>;
+		};
+	};
+};
+
+/* lvds1 -> isp_vir0 */
+&rkcif_mipi_lvds1_sditf {
+	status = "disabled";
+
+	port {
+		rkcif_mipi_lvds1_sditf_out: endpoint {
+			remote-endpoint = <&rkisp_vir0_in>;
+		};
+	};
+};
+
+/* lvds3 -> isp_vir1 */
+&rkcif_mipi_lvds3_sditf {
+	status = "disabled";
+
+	port {
+		rkcif_mipi_lvds3_sditf_out: endpoint {
+			remote-endpoint = <&rkisp_vir1_in>;
 		};
 	};
 };
@@ -1067,22 +1162,44 @@
 	status = "okay";
 };
 
+/* From IMX415-0 */
 &rkisp_vir0 {
-	status = "okay";
+	status = "disabled";
 
 	port {
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		isp0_vir0_in: endpoint@0 {
+		rkisp_vir0_in: endpoint@0 {
 			reg = <0>;
-			remote-endpoint = <&mipi_lvds_sditf_out>;
+			remote-endpoint = <&rkcif_mipi_lvds1_sditf_out>;
 		};
 	};
 };
 
+/* isp_vir0 -> vpss0 */
 &rkisp_vir0_sditf {
-	status = "okay";
+	status = "disabled";
+};
+
+/* From IMX415-1 */
+&rkisp_vir1 {
+	status = "disabled";
+
+	port {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		rkisp_vir1_in: endpoint@0 {
+			reg = <0>;
+			remote-endpoint = <&rkcif_mipi_lvds3_sditf_out>;
+		};
+	};
+};
+
+/* isp_vir1 -> vpss1 */
+&rkisp_vir1_sditf {
+	status = "disabled";
 };
 
 &rknpu {
@@ -1123,15 +1240,21 @@
 };
 
 &rkvpss {
-	status = "okay";
+	status = "disabled";
 };
 
 &rkvpss_mmu {
-	status = "okay";
+	status = "disabled";
 };
 
+/* From imx415-0 */
 &rkvpss_vir0 {
-	status = "okay";
+	status = "disabled";
+};
+
+/* From imx415-1 */
+&rkvpss_vir1 {
+	status = "disabled";
 };
 
 &rng {
@@ -1151,13 +1274,22 @@
 	rockchip,regulator-on-before-mem = <&vdd_npu_s0>;
 };
 
-&route_dsi {
+/* Max 4K@120Hz */
+&route_dp0 {
 	status = "okay";
+	connect = <&vp0_out_dp0>;
 };
 
+/* Max 1920x1080@60Hz */
+&route_dsi {
+	status = "disabled";
+	connect = <&vp2_out_dsi>;
+};
+
+/* Max 2560x1600@60Hz */
 &route_hdmi {
 	status = "okay";
-	connect = <&vp0_out_hdmi>;
+	connect = <&vp1_out_hdmi>;
 };
 
 /* es8388 */
@@ -1182,12 +1314,14 @@
 
 /* rk628 hdmirx sound */
 &sai4 {
+	dmas = <&dmac2 1>;
+	dma-names = "rx";
 	pinctrl-names = "default";
 	pinctrl-0 = <&sai4m0_lrck
 		      &sai4m0_sclk
 		      &sai4m0_sdi>;
 	rockchip,capture-only;
-	/*rockchip,sai-rx-wait-time-ms = <50>;*/
+	rockchip,sai-rx-wait-time-ms = <50>;
 	status = "okay";
 };
 
@@ -1250,6 +1384,7 @@
 	status = "okay";
 };
 
+/* dp0 sound */
 &spdif_tx3 {
 	status = "okay";
 };
@@ -1326,7 +1461,6 @@
 &usb_drd0_dwc3 {
 	dr_mode = "otg";
 	usb-role-switch;
-	extcon = <&u2phy0>;
 	status = "okay";
 
 	port {

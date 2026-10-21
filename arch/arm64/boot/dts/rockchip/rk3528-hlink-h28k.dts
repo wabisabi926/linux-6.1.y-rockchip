@@ -32,6 +32,36 @@
 	status = "okay";
 };
 
+&gpu {
+	status = "okay";
+};
+
+&gpu_bus {
+	status = "okay";
+};
+
+&led_amber {
+	linux,default-trigger = "netdev";
+
+	netdev {
+		link;
+		tx;
+		rx;
+		device-name = "eth0";
+	};
+};
+
+&led_blue {
+	linux,default-trigger = "netdev";
+
+	netdev {
+		link;
+		tx;
+		rx;
+		device-name = "eth1";
+	};
+};
+
 &pcie2x1 {
 	status = "okay";
 	reset-gpios = <&gpio4 RK_PA3 GPIO_ACTIVE_HIGH>;

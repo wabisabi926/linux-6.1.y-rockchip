@@ -1963,8 +1963,11 @@ int serial8250_handle_irq(struct uart_port *port, unsigned int iir)
 	if (status & (UART_LSR_DR | UART_LSR_BI)) {
 		int dma_err = -1;
 
-		if (up->dma && up->dma->rxchan)
+		if (up->dma && up->dma->rxchan) {
 			dma_err = handle_rx_dma(up, iir);
+			/* Clear lsr_saved_flags here, because it's not updated in handle_rx_dma */
+			up->lsr_saved_flags = 0;
+		}
 
 		if (!up->dma || dma_err)
 			status = serial8250_rx_chars(up, status);
@@ -2433,9 +2436,8 @@ int serial8250_do_startup(struct uart_port *port)
 	/*
 	 * Now, initialize the UART
 	 */
-	serial_port_out(port, UART_LCR, UART_LCR_WLEN8);
-
 	spin_lock_irqsave(&port->lock, flags);
+	serial_port_out(port, UART_LCR, UART_LCR_WLEN8);
 	if (up->port.flags & UPF_FOURPORT) {
 		if (!up->port.irq)
 			up->port.mctrl |= TIOCM_OUT1;
@@ -2594,6 +2596,12 @@ void serial8250_do_shutdown(struct uart_port *port)
 	 * the IRQ chain.
 	 */
 	serial_port_in(port, UART_RX);
+	/*
+	 * LCR writes on DW UART can trigger late (unmaskable) IRQs.
+	 * Handle them before releasing the handler.
+	 */
+	synchronize_irq(port->irq);
+
 	serial8250_rpm_put(up);
 
 	up->ops->release_irq(up);

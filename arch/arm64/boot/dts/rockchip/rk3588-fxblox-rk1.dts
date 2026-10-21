@@ -646,7 +646,7 @@
 };
 
 &display_subsystem {
-	clocks = <&hdptxphy_hdmi0>, <&hdptxphy_hdmi1>;
+	clocks = <&hdptxphy0>, <&hdptxphy1>;
 	clock-names = "hdmi0_phy_pll", "hdmi1_phy_pll";
 	route {
 			route_dp0: route-dp0 {
@@ -1017,7 +1017,6 @@
 &usbdp_phy0 {
 	status = "okay";
 	orientation-switch;
-	rockchip,dp-lane-mux = <0 1 2 3 >;
 	svid = <0xff01>;
 	sbu1-dc-gpios = <&gpio4 RK_PB2 GPIO_ACTIVE_HIGH>;
 	sbu2-dc-gpios = <&gpio4 RK_PA6 GPIO_ACTIVE_HIGH>;
@@ -1040,7 +1039,6 @@
 &usbdp_phy1 {
 	status = "okay";
 	orientation-switch;
-	rockchip,dp-lane-mux = <0 1 2 3 >;
 	svid = <0xff01>;
 	sbu1-dc-gpios = <&gpio4 RK_PC1 GPIO_ACTIVE_HIGH>;
 	sbu2-dc-gpios = <&gpio4 RK_PC0 GPIO_ACTIVE_HIGH>;

@@ -12,10 +12,3 @@ config AIC8800_SDIO_FW_PATH
 	depends on AIC8800_SDIO_WLAN
 	help
 	  Path to the firmware & config file.
-
-config AIC8800_SDIO_BTLPM
-	bool "AIC8800 Bluetooth Support"
-	default y
-	depends on AIC8800_SDIO_WLAN
-	help
-	  Support AICSemi AIC8800 bluetooth.

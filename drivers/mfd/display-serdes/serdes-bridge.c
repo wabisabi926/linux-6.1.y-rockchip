@@ -43,11 +43,12 @@ static struct mipi_dsi_device *serdes_attach_dsi(struct serdes_bridge *serdes_br
 		return dsi;
 	}
 
-	dsi->lanes = 4;
-	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
-	SERDES_DBG_MFD("%s: %s dsi_mode MIPI_DSI_MODE_VIDEO_SYNC_PULSE 0x%lx\n",
-		       __func__, serdes->chip_data->name, dsi->mode_flags);
+	dsi->lanes = serdes_bridge->lanes;
+	dsi->format = serdes_bridge->format;
+	dsi->mode_flags = serdes_bridge->flags;
+
+	SERDES_DBG_MFD("%s: %s lanes=0x%lx format=0x%lx mode_flags=0x%lx\n",
+		__func__, serdes->chip_data->name, dsi->lanes, dsi->format, dsi->mode_flags);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
@@ -176,8 +177,6 @@ static void serdes_bridge_pre_enable(struct drm_bridge *bridge)
 	if (serdes_bridge->split_panel)
 		ret = drm_panel_prepare(serdes_bridge->split_panel);
 
-	serdes_set_pinctrl_default(serdes);
-
 	SERDES_DBG_MFD("%s: %s ret=%d\n", __func__, dev_name(serdes->dev), ret);
 }
 
@@ -187,14 +186,16 @@ static void serdes_bridge_enable(struct drm_bridge *bridge)
 	struct serdes *serdes = serdes_bridge->parent;
 	int ret = 0;
 
+	if (serdes->chip_data->bridge_ops->enable)
+		ret = serdes->chip_data->bridge_ops->enable(serdes);
+
+	serdes_set_pinctrl_init(serdes);
+
 	if (serdes_bridge->panel)
 		ret = drm_panel_enable(serdes_bridge->panel);
 
 	if (serdes_bridge->split_panel)
 		ret = drm_panel_enable(serdes_bridge->split_panel);
-
-	if (serdes->chip_data->bridge_ops->enable)
-		ret = serdes->chip_data->bridge_ops->enable(serdes);
 
 	if (!ret) {
 		extcon_set_state_sync(serdes->extcon, EXTCON_JACK_VIDEO_OUT, true);
@@ -265,11 +266,30 @@ static const struct drm_bridge_funcs serdes_bridge_funcs = {
 static int serdes_bridge_parse_dt(struct serdes_bridge *serdes_bridge)
 {
 	unsigned int nr = 0;
+	unsigned int val = 0;
 	struct device_node *ports, *port;
 	struct device *dev = serdes_bridge->dev;
 	struct device_node *node = serdes_bridge->base_bridge.of_node;
 
 	serdes_bridge->sel_mipi = of_property_read_bool(dev->parent->of_node, "sel-mipi");
+
+	if (serdes_bridge->sel_mipi) {
+		if (!of_property_read_u32(node, "dsi,lanes", &val))
+			serdes_bridge->lanes = val;
+		else
+			serdes_bridge->lanes = 4;
+
+		if (!of_property_read_u32(node, "dsi,format", &val))
+			serdes_bridge->format = val;
+		else
+			serdes_bridge->format = MIPI_DSI_FMT_RGB888;
+
+		if (!of_property_read_u32(node, "dsi,flags", &val))
+			serdes_bridge->flags = val;
+		else
+			serdes_bridge->flags = MIPI_DSI_MODE_VIDEO |
+					       MIPI_DSI_MODE_VIDEO_SYNC_PULSE;
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
@@ -404,7 +424,7 @@ static struct platform_driver serdes_bridge_driver = {
 		.of_match_table = of_match_ptr(serdes_bridge_of_match),
 	},
 	.probe = serdes_bridge_probe,
-	.remove = serdes_bridge_remove,
+	.remove = (void *)serdes_bridge_remove,
 };
 
 static int __init serdes_bridge_init(void)

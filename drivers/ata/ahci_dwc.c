@@ -204,6 +204,9 @@ static void ahci_dwc_check_cap(struct ahci_host_priv *hpriv)
 		dev_warn(&dpriv->pdev->dev, "PMPn is limited up to %u ports\n",
 			 fbs_pmp);
 	}
+	
+	if (fbs_sup)
+			hpriv->flags |= AHCI_HFLAG_YES_FBS;
 
 	for_each_set_bit(i, &port_map, AHCI_MAX_PORTS) {
 		if (!dev_mp && hpriv->saved_port_cap[i] & PORT_CMD_MPSP) {

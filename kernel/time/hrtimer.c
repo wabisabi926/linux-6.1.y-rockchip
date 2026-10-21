@@ -669,15 +669,10 @@ static inline ktime_t hrtimer_update_base(struct hrtimer_cpu_base *base)
 /*
  * Is the high resolution mode active ?
  */
-static inline int __hrtimer_hres_active(struct hrtimer_cpu_base *cpu_base)
+static inline int hrtimer_hres_active(struct hrtimer_cpu_base *cpu_base)
 {
 	return IS_ENABLED(CONFIG_HIGH_RES_TIMERS) ?
 		cpu_base->hres_active : 0;
-}
-
-static inline int hrtimer_hres_active(void)
-{
-	return __hrtimer_hres_active(this_cpu_ptr(&hrtimer_bases));
 }
 
 static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
@@ -703,7 +698,7 @@ static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 	 * set. So we'd effectively block all timers until the T2 event
 	 * fires.
 	 */
-	if (!__hrtimer_hres_active(cpu_base) || cpu_base->hang_detected)
+	if (!hrtimer_hres_active(cpu_base) || cpu_base->hang_detected)
 		return;
 
 	tick_program_event(expires_next, 1);
@@ -811,13 +806,13 @@ static void retrigger_next_event(void *arg)
 	 * of the next expiring timer is enough. The return from the SMP
 	 * function call will take care of the reprogramming in case the
 	 * CPU was in a NOHZ idle sleep.
+	 *
+	 * In periodic low resolution mode, the next softirq expiration
+	 * must also be updated.
 	 */
-	if (!__hrtimer_hres_active(base) && !tick_nohz_active)
-		return;
-
 	raw_spin_lock(&base->lock);
 	hrtimer_update_base(base);
-	if (__hrtimer_hres_active(base))
+	if (hrtimer_hres_active(base))
 		hrtimer_force_reprogram(base, 0);
 	else
 		hrtimer_update_next_event(base);
@@ -944,7 +939,7 @@ static bool update_needs_ipi(struct hrtimer_cpu_base *cpu_base,
 			return true;
 
 		/* Extra check for softirq clock bases */
-		if (base->clockid < HRTIMER_BASE_MONOTONIC_SOFT)
+		if (base->index < HRTIMER_BASE_MONOTONIC_SOFT)
 			continue;
 		if (cpu_base->softirq_activated)
 			continue;
@@ -974,7 +969,7 @@ void clock_was_set(unsigned int bases)
 	cpumask_var_t mask;
 	int cpu;
 
-	if (!__hrtimer_hres_active(cpu_base) && !tick_nohz_active)
+	if (!hrtimer_hres_active(cpu_base) && !tick_nohz_active)
 		goto out_timerfd;
 
 	if (!zalloc_cpumask_var(&mask, GFP_KERNEL)) {
@@ -1551,7 +1546,7 @@ u64 hrtimer_get_next_event(void)
 
 	raw_spin_lock_irqsave(&cpu_base->lock, flags);
 
-	if (!__hrtimer_hres_active(cpu_base))
+	if (!hrtimer_hres_active(cpu_base))
 		expires = __hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_ALL);
 
 	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
@@ -1574,7 +1569,7 @@ u64 hrtimer_next_event_without(const struct hrtimer *exclude)
 
 	raw_spin_lock_irqsave(&cpu_base->lock, flags);
 
-	if (__hrtimer_hres_active(cpu_base)) {
+	if (hrtimer_hres_active(cpu_base)) {
 		unsigned int active;
 
 		if (!cpu_base->softirq_activated) {
@@ -1717,7 +1712,7 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base,
 
 	lockdep_assert_held(&cpu_base->lock);
 
-	debug_deactivate(timer);
+	debug_hrtimer_deactivate(timer);
 	base->running = timer;
 
 	/*
@@ -1935,25 +1930,7 @@ retry:
 	tick_program_event(expires_next, 1);
 	pr_warn_once("hrtimer: interrupt took %llu ns\n", ktime_to_ns(delta));
 }
-
-/* called with interrupts disabled */
-static inline void __hrtimer_peek_ahead_timers(void)
-{
-	struct tick_device *td;
-
-	if (!hrtimer_hres_active())
-		return;
-
-	td = this_cpu_ptr(&tick_cpu_device);
-	if (td && td->evtdev)
-		hrtimer_interrupt(td->evtdev);
-}
-
-#else /* CONFIG_HIGH_RES_TIMERS */
-
-static inline void __hrtimer_peek_ahead_timers(void) { }
-
-#endif	/* !CONFIG_HIGH_RES_TIMERS */
+#endif /* !CONFIG_HIGH_RES_TIMERS */
 
 /*
  * Called from run_local_timers in hardirq context every jiffy
@@ -1964,7 +1941,7 @@ void hrtimer_run_queues(void)
 	unsigned long flags;
 	ktime_t now;
 
-	if (__hrtimer_hres_active(cpu_base))
+	if (hrtimer_hres_active(cpu_base))
 		return;
 
 	/*
@@ -2027,7 +2004,11 @@ void hrtimer_sleeper_start_expires(struct hrtimer_sleeper *sl,
 	 * fiddling with this decision is avoided at the call sites.
 	 */
 	if (IS_ENABLED(CONFIG_PREEMPT_RT) && sl->timer.is_hard)
+#ifdef CONFIG_ROCKCHIP_OPTIMIZE_HRTIMER_LATENCY
+		mode |= (HRTIMER_MODE_HARD | HRTIMER_MODE_PINNED);
+#else
 		mode |= HRTIMER_MODE_HARD;
+#endif
 
 	hrtimer_start_expires(&sl->timer, mode);
 }
@@ -2099,9 +2080,79 @@ int nanosleep_copyout(struct restart_block *restart, struct timespec64 *ts)
 	return -ERESTART_RESTARTBLOCK;
 }
 
+#ifdef CONFIG_ROCKCHIP_OPTIMIZE_HRTIMER_LATENCY
+static unsigned int hrtimer_latency_ns;
+static unsigned int hrtimer_latency_en_prio = 5;
+static unsigned int bad_latency_ns;
+static unsigned int max_latency_ns;
+module_param(hrtimer_latency_ns, uint, 0644);
+module_param(hrtimer_latency_en_prio, uint, 0644);
+module_param(bad_latency_ns, uint, 0644);
+module_param(max_latency_ns, uint, 0644);
+
+struct hrtimer_latency_data {
+	char compatible[128];
+	unsigned int latency_ns;
+};
+
+static const struct hrtimer_latency_data hrtimer_latency_list[] __initconst = {
+	{ .compatible = "rockchip,rk3506",	.latency_ns = 50000 },
+	{ .compatible = "rockchip,rk3562",	.latency_ns = 50000 },
+	{ .compatible = "rockchip,rk3566",	.latency_ns = 50000 },
+	{ .compatible = "rockchip,rk3568",	.latency_ns = 50000 },
+	{ .compatible = "rockchip,rk3572",	.latency_ns = 0 },
+	{ .compatible = "rockchip,rk3572s",	.latency_ns = 0 },
+	{ .compatible = "rockchip,rk3576",	.latency_ns = 0 },
+	{ .compatible = "rockchip,rk3576s",	.latency_ns = 0 },
+	{ .compatible = "rockchip,rk3588",	.latency_ns = 0 },
+	{ .compatible = "rockchip,rv1126b",	.latency_ns = 50000 },
+	{ }
+};
+
+static int __init hrtimer_latency_init(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(hrtimer_latency_list); i++) {
+		if (of_machine_is_compatible(hrtimer_latency_list[i].compatible)) {
+			hrtimer_latency_ns = hrtimer_latency_list[i].latency_ns;
+			break;
+		}
+	}
+
+	return 0;
+}
+late_initcall_sync(hrtimer_latency_init);
+#endif
+
 static int __sched do_nanosleep(struct hrtimer_sleeper *t, enum hrtimer_mode mode)
 {
 	struct restart_block *restart;
+#ifdef CONFIG_ROCKCHIP_OPTIMIZE_HRTIMER_LATENCY
+	ktime_t softexpires, delta;
+
+	if (hrtimer_latency_ns && (current->prio <= hrtimer_latency_en_prio) &&
+	   (current->hrtimer_softexpires == 0)) {
+		softexpires = hrtimer_get_softexpires(&t->timer);
+		if (mode & HRTIMER_MODE_REL)
+			current->hrtimer_softexpires = ktime_add_safe(softexpires,
+								      t->timer.base->get_time());
+		else
+			current->hrtimer_softexpires = softexpires;
+
+		delta = current->hrtimer_softexpires - t->timer.base->get_time();
+		if (delta <= hrtimer_latency_ns) {
+			while (t->timer.base->get_time() < current->hrtimer_softexpires)
+				cpu_relax();
+			current->hrtimer_softexpires = 0;
+
+			return 0;
+		}
+
+		softexpires -= hrtimer_latency_ns;
+		hrtimer_set_expires_range_ns(&t->timer, softexpires, 0);
+	}
+#endif
 
 	do {
 		set_current_state(TASK_INTERRUPTIBLE|TASK_FREEZABLE);
@@ -2117,8 +2168,30 @@ static int __sched do_nanosleep(struct hrtimer_sleeper *t, enum hrtimer_mode mod
 
 	__set_current_state(TASK_RUNNING);
 
+#ifdef CONFIG_ROCKCHIP_OPTIMIZE_HRTIMER_LATENCY
+	if (!t->task) {
+		if (current->hrtimer_softexpires) {
+			if (current->hrtimer_softexpires < t->timer.base->get_time()) {
+				delta = t->timer.base->get_time() - current->hrtimer_softexpires;
+				if (delta > max_latency_ns)
+					max_latency_ns = delta;
+			} else {
+				delta = current->hrtimer_softexpires - t->timer.base->get_time();
+				if (delta > hrtimer_latency_ns)
+					bad_latency_ns = delta;
+			}
+
+			while (t->timer.base->get_time() < current->hrtimer_softexpires)
+				cpu_relax();
+			current->hrtimer_softexpires = 0;
+		}
+
+		return 0;
+	}
+#else
 	if (!t->task)
 		return 0;
+#endif
 
 	restart = &current->restart_block;
 	if (restart->nanosleep.type != TT_NONE) {
@@ -2309,11 +2382,6 @@ int hrtimers_cpu_dying(unsigned int dying_cpu)
 				     &new_base->clock_base[i]);
 	}
 
-	/*
-	 * The migration might have changed the first expiring softirq
-	 * timer on this CPU. Update it.
-	 */
-	__hrtimer_get_next_event(new_base, HRTIMER_ACTIVE_SOFT);
 	/* Tell the other CPU to retrigger the next event */
 	smp_call_function_single(ncpu, retrigger_next_event, NULL, 0);
 

@@ -981,6 +981,9 @@
 	rgmii_phy0: phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
+		/* PHY internal RGMII delays disabled; timing handled by MAC-side GRF (tx_delay/rx_delay) */
+		phy-tx-delay = <0>;
+		phy-rx-delay = <0>;
 	};
 };
 
@@ -989,6 +992,9 @@
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
         /* clocks = <&cru CLK_MAC1_OUT>; */
+		/* PHY internal RGMII delays disabled; timing handled by MAC-side GRF (tx_delay/rx_delay) */
+		phy-tx-delay = <0>;
+		phy-rx-delay = <0>;
 	};
 };
 

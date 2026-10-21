@@ -497,12 +497,14 @@ static int dw_mci_rk3288_parse_dt(struct dw_mci *host)
 		return -ENOMEM;
 
 	/*
-	 * RK356X SoCs only support 375KHz for ID mode, so any clk request
-	 * that less than 1.6MHz(2 * 400KHz * RK3288_CLKGEN_DIV) should be
-	 * wrapped  into 375KHz
+	 * RK356X and RK3528 SoCs only support 375KHz for ID mode, so any
+	 * clk request that less than 1.6MHz(2 * 400KHz * RK3288_CLKGEN_DIV)
+	 * should be wrapped into 375KHz
 	 */
 	if (of_device_is_compatible(host->dev->of_node,
-				    "rockchip,rk3568-dw-mshc"))
+				    "rockchip,rk3568-dw-mshc") ||
+	    of_device_is_compatible(host->dev->of_node,
+				    "rockchip,rk3528-dw-mshc"))
 		priv->f_min = 375000;
 	else
 		priv->f_min = 100000;
@@ -578,11 +580,30 @@ static int dw_mci_rockchip_init(struct dw_mci *host)
 		mci_writel(host, MISC_CON, MEM_CLK_AUTOGATE_ENABLE);
 	}
 
+	/*
+	 * Force set initial phase for ciu-drive and ciu-sample clocks
+	 * to ensure they are in a known state after a warm reboot.
+	 * Without this, GRF CRU phase registers may retain stale values
+	 * from the previous boot, causing card communication failures.
+	 */
+	if (!IS_ERR(priv->sample_clk))
+		clk_set_phase(priv->sample_clk, priv->default_sample_phase);
+	if (!IS_ERR(priv->drv_clk))
+		clk_set_phase(priv->drv_clk, 90);
+
 	host->need_xfer_timer = true;
 	return 0;
 }
 
 static const struct dw_mci_drv_data rk2928_drv_data = {
+	.init			= dw_mci_rockchip_init,
+};
+
+static const struct dw_mci_drv_data rk3528_drv_data = {
+	.common_caps		= MMC_CAP_CMD23,
+	.set_ios		= dw_mci_rk3288_set_ios,
+	.execute_tuning		= dw_mci_rk3288_execute_tuning,
+	.parse_dt		= dw_mci_rk3288_parse_dt,
 	.init			= dw_mci_rockchip_init,
 };
 
@@ -599,6 +620,8 @@ static const struct of_device_id dw_mci_rockchip_match[] = {
 		.data = &rk2928_drv_data },
 	{ .compatible = "rockchip,rk3288-dw-mshc",
 		.data = &rk3288_drv_data },
+	{ .compatible = "rockchip,rk3528-dw-mshc",
+		.data = &rk3528_drv_data },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dw_mci_rockchip_match);

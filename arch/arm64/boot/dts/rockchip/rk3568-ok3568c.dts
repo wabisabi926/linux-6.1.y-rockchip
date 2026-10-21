@@ -813,7 +813,7 @@
         pinctrl-names = "default";
         pinctrl-0 = <&i2c2m1_xfer>;
 
-        vm149c_0: vm149c@0c {
+        vm149c_0: vm149c@c {
                 compatible = "silicon touch,vm149c";
                 status = "okay";
                 reg = <0x0c>;
@@ -894,7 +894,7 @@
         polytouch: edt-ft5x06@38{
                 compatible = "edt,edt-ft5406", "edt,edt-ft5x06";
                 reg = <0x38>;
-                pinctrl-names = "defaults";
+                pinctrl-names = "default";
                 pinctrl-0 = <&ft5x06_int>;
                 interrupt-parent = <&gpio0>;
                 interrupts = <RK_PA0 IRQ_TYPE_EDGE_FALLING>;

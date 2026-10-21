@@ -145,11 +145,11 @@
 
 	rfkill_modem: rfkill-modem {
 		compatible = "rfkill-gpio";
-		name = "rfkill-modem";
+		label = "rfkill-modem";
 		pinctrl-names = "default";
 		pinctrl-0 = <&modem_reset_pin>;
-		reset-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_HIGH>;
-		type = "wwan";
+		reset-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_LOW>;
+		radio-type = "wwan";
 	};
 
 	/*
@@ -945,9 +945,8 @@
 		interrupt-parent = <&gpio0>;
 		interrupts = <7 IRQ_TYPE_LEVEL_LOW>;
 
-		pinctrl-names = "default", "pmic-power-off";
-		pinctrl-0 = <&pmic_pins>, <&rk806_dvs1_null>, <&rk806_dvs2_null>, <&rk806_dvs3_null>;
-		pinctrl-1 = <&rk806_dvs1_pwrdn>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pmic_pins>;
 
 		/* 2800mv-3500mv */
 		low_voltage_threshold = <3000>;
@@ -984,91 +983,6 @@
 
 		pwrkey {
 			status = "okay";
-		};
-
-		pinctrl_rk806: pinctrl_rk806 {
-			gpio-controller;
-			#gpio-cells = <2>;
-
-			rk806_dvs1_null: rk806_dvs1_null {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs1_slp: rk806_dvs1_slp {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs1_pwrdn: rk806_dvs1_pwrdn {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs1_rst: rk806_dvs1_rst {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs2_null: rk806_dvs2_null {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs2_slp: rk806_dvs2_slp {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs2_pwrdn: rk806_dvs2_pwrdn {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs2_rst: rk806_dvs2_rst {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs2_dvs: rk806_dvs2_dvs {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun4";
-			};
-
-			rk806_dvs2_gpio: rk806_dvs2_gpio {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun5";
-			};
-
-			rk806_dvs3_null: rk806_dvs3_null {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs3_slp: rk806_dvs3_slp {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs3_pwrdn: rk806_dvs3_pwrdn {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs3_rst: rk806_dvs3_rst {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs3_dvs: rk806_dvs3_dvs {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun4";
-			};
-
-			rk806_dvs3_gpio: rk806_dvs3_gpio {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun5";
-			};
 		};
 
 		regulators {
@@ -1418,7 +1332,7 @@
 };
 
 &display_subsystem {
-	clocks = <&hdptxphy_hdmi0>, <&hdptxphy_hdmi1>;
+	clocks = <&hdptxphy0>, <&hdptxphy1>;
 	clock-names = "hdmi0_phy_pll", "hdmi1_phy_pll";
 	memory-region = <&drm_logo>;
 	memory-region-names = "drm-logo";
@@ -1441,19 +1355,19 @@
 	connect = <&vp2_out_dp0>;
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi1 {
+&hdptxphy1 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi1 {
+&hdptxphy1 {
 	status = "okay";
 };
 
@@ -1853,8 +1767,6 @@
 	status = "okay";
 	orientation-switch;
 
-	rockchip,dp-lane-mux = < 2 3 >;
-
 	svid = <0xff01>;
 	sbu1-dc-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
 	sbu2-dc-gpios = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
@@ -2248,7 +2160,7 @@
 
 	modem {
 		modem_reset_pin: modem-reset-pin {
-			rockchip,pins = <4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_down>;
+			rockchip,pins = <4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 

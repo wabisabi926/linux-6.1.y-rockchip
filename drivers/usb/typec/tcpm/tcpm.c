@@ -351,6 +351,15 @@ struct tcpm_port {
 	int try_role;
 	int try_snk_count;
 	int try_src_count;
+	/*
+	 * Bounded number of CC re-checks performed while toggling without a
+	 * partner. Needed because a partner already attached when toggling
+	 * starts (e.g. a Type-C DP dongle present at boot) does not generate
+	 * a CC change interrupt. If its attach was seen during
+	 * PORT_RESET_WAIT_OFF (which ignores CC changes), the port would
+	 * otherwise stay in TOGGLING until a manual re-plug.
+	 */
+	u8 unattached_cc_retries;
 
 	enum pd_msg_request queued_message;
 
@@ -1036,7 +1045,7 @@ static int tcpm_set_attached_state(struct tcpm_port *port, bool attached)
 				     port->data_role);
 }
 
-static int tcpm_set_roles(struct tcpm_port *port, bool attached,
+static int tcpm_set_roles(struct tcpm_port *port, bool attached, int state,
 			  enum typec_role role, enum typec_data_role data)
 {
 	enum typec_orientation orientation;
@@ -1073,7 +1082,7 @@ static int tcpm_set_roles(struct tcpm_port *port, bool attached,
 		}
 	}
 
-	ret = tcpm_mux_set(port, TYPEC_STATE_USB, usb_role, orientation);
+	ret = tcpm_mux_set(port, state, usb_role, orientation);
 	if (ret < 0)
 		return ret;
 
@@ -3737,16 +3746,6 @@ static int tcpm_src_attach(struct tcpm_port *port)
 
 	tcpm_enable_auto_vbus_discharge(port, true);
 
-	ret = tcpm_set_roles(port, true, TYPEC_SOURCE, tcpm_data_role_for_source(port));
-	if (ret < 0)
-		return ret;
-
-	if (port->pd_supported) {
-		ret = port->tcpc->set_pd_rx(port->tcpc, true);
-		if (ret < 0)
-			goto out_disable_mux;
-	}
-
 	/*
 	 * USB Type-C specification, version 1.2,
 	 * chapter 4.5.2.2.8.1 (Attached.SRC Requirements)
@@ -3756,12 +3755,23 @@ static int tcpm_src_attach(struct tcpm_port *port)
 	    (polarity == TYPEC_POLARITY_CC2 && port->cc1 == TYPEC_CC_RA)) {
 		ret = tcpm_set_vconn(port, true);
 		if (ret < 0)
-			goto out_disable_pd;
+			return ret;
 	}
 
 	ret = tcpm_set_vbus(port, true);
 	if (ret < 0)
 		goto out_disable_vconn;
+
+	ret = tcpm_set_roles(port, true, TYPEC_STATE_USB, TYPEC_SOURCE,
+			     tcpm_data_role_for_source(port));
+	if (ret < 0)
+		goto out_disable_vbus;
+
+	if (port->pd_supported) {
+		ret = port->tcpc->set_pd_rx(port->tcpc, true);
+		if (ret < 0)
+			goto out_disable_mux;
+	}
 
 	port->pd_capable = false;
 
@@ -3772,14 +3782,14 @@ static int tcpm_src_attach(struct tcpm_port *port)
 
 	return 0;
 
-out_disable_vconn:
-	tcpm_set_vconn(port, false);
-out_disable_pd:
-	if (port->pd_supported)
-		port->tcpc->set_pd_rx(port->tcpc, false);
 out_disable_mux:
 	tcpm_mux_set(port, TYPEC_STATE_SAFE, USB_ROLE_NONE,
 		     TYPEC_ORIENTATION_NONE);
+out_disable_vbus:
+	tcpm_set_vbus(port, false);
+out_disable_vconn:
+	tcpm_set_vconn(port, false);
+
 	return ret;
 }
 
@@ -3895,7 +3905,8 @@ static int tcpm_snk_attach(struct tcpm_port *port)
 
 	tcpm_enable_auto_vbus_discharge(port, true);
 
-	ret = tcpm_set_roles(port, true, TYPEC_SINK, tcpm_data_role_for_sink(port));
+	ret = tcpm_set_roles(port, true, TYPEC_STATE_USB,
+			     TYPEC_SINK, tcpm_data_role_for_sink(port));
 	if (ret < 0)
 		return ret;
 
@@ -3917,12 +3928,24 @@ static void tcpm_snk_detach(struct tcpm_port *port)
 static int tcpm_acc_attach(struct tcpm_port *port)
 {
 	int ret;
+	enum typec_role role;
+	enum typec_data_role data;
+	int state = TYPEC_STATE_USB;
 
 	if (port->attached)
 		return 0;
 
-	ret = tcpm_set_roles(port, true, TYPEC_SOURCE,
-			     tcpm_data_role_for_source(port));
+	role = tcpm_port_is_sink(port) ? TYPEC_SINK : TYPEC_SOURCE;
+	data = tcpm_port_is_sink(port) ? tcpm_data_role_for_sink(port)
+				       : tcpm_data_role_for_source(port);
+
+	if (tcpm_port_is_audio(port))
+		state = TYPEC_MODE_AUDIO;
+
+	if (tcpm_port_is_debug(port))
+		state = TYPEC_MODE_DEBUG;
+
+	ret = tcpm_set_roles(port, true, state, role, data);
 	if (ret < 0)
 		return ret;
 
@@ -4030,6 +4053,57 @@ static void tcpm_set_initial_svdm_version(struct tcpm_port *port)
 	}
 }
 
+static void _tcpm_cc_change(struct tcpm_port *port, enum typec_cc_status cc1,
+			    enum typec_cc_status cc2);
+
+/*
+ * Re-read the CC lines after a port entered its unattached state.
+ *
+ * A port that does not toggle the CC lines (it is not a DRP, or the TCPC
+ * has no toggling support) relies solely on CC change interrupts to detect
+ * a partner. A partner that was already attached when the state was entered
+ * does not generate a new interrupt; worse, its attach may have been seen
+ * while CC changes were ignored (e.g. during PORT_RESET_WAIT_OFF), in which
+ * case the port stays unattached until a manual re-plug. Re-read CC here so
+ * such a partner (e.g. a Type-C DP dongle connected during boot) is detected
+ * without one. A few bounded retries absorb the time the TCPC needs to
+ * settle after its role/CC registers were (re)programmed.
+ *
+ * Returns true if the caller must stop running the state machine, i.e. a
+ * partner was found (_tcpm_cc_change() has already moved the state) or a
+ * delayed retry has been scheduled. Returns false when nothing was found
+ * and the retry budget is exhausted.
+ */
+static bool tcpm_recheck_cc_unattached(struct tcpm_port *port)
+{
+	enum typec_cc_status cc1, cc2;
+
+	if (port->tcpc->get_cc(port->tcpc, &cc1, &cc2))
+		return false;
+
+	if (cc1 != TYPEC_CC_OPEN || cc2 != TYPEC_CC_OPEN) {
+		port->unattached_cc_retries = 0;
+		dev_info(port->dev,
+			 "usbdp: unattached CC re-check cc1=%u cc2=%u\n",
+			 cc1, cc2);
+		_tcpm_cc_change(port, cc1, cc2);
+		return true;
+	}
+
+	if (port->unattached_cc_retries < 30) {
+		port->unattached_cc_retries++;
+		if (port->unattached_cc_retries == 1 ||
+		    port->unattached_cc_retries == 30)
+			dev_info(port->dev,
+				 "usbdp: no partner, CC re-check %u/30\n",
+				 port->unattached_cc_retries);
+		tcpm_set_state(port, port->state, PD_T_CC_DEBOUNCE);
+		return true;
+	}
+
+	return false;
+}
+
 static void run_state_machine(struct tcpm_port *port)
 {
 	int ret;
@@ -4040,6 +4114,16 @@ static void run_state_machine(struct tcpm_port *port)
 	port->enter_state = port->state;
 	switch (port->state) {
 	case TOGGLING:
+		/*
+		 * A partner that is already attached before toggling starts
+		 * does not generate a new CC change event. If its initial
+		 * attach fell into the PORT_RESET_WAIT_OFF window (which
+		 * ignores CC changes), the port would otherwise stay in
+		 * TOGGLING until a manual re-plug. Re-read the CC state to
+		 * catch such a partner (e.g. a Type-C DP dongle connected
+		 * during boot).
+		 */
+		tcpm_recheck_cc_unattached(port);
 		break;
 	/* SRC states */
 	case SRC_UNATTACHED:
@@ -4047,10 +4131,18 @@ static void run_state_machine(struct tcpm_port *port)
 			tcpm_swap_complete(port, -ENOTCONN);
 		tcpm_src_detach(port);
 		if (tcpm_start_toggling(port, tcpm_rp_cc(port))) {
+			port->unattached_cc_retries = 0;
 			tcpm_set_state(port, TOGGLING, 0);
 			break;
 		}
 		tcpm_set_cc(port, tcpm_rp_cc(port));
+		/*
+		 * A fixed-role source does not toggle the CC lines, so a
+		 * partner already attached when this state was entered must
+		 * be found by re-reading CC here (see the helper).
+		 */
+		if (tcpm_recheck_cc_unattached(port))
+			break;
 		if (port->port_type == TYPEC_PORT_DRP)
 			tcpm_set_state(port, SNK_UNATTACHED, PD_T_DRP_SNK);
 		break;
@@ -4286,10 +4378,18 @@ static void run_state_machine(struct tcpm_port *port)
 		tcpm_pps_complete(port, -ENOTCONN);
 		tcpm_snk_detach(port);
 		if (tcpm_start_toggling(port, TYPEC_CC_RD)) {
+			port->unattached_cc_retries = 0;
 			tcpm_set_state(port, TOGGLING, 0);
 			break;
 		}
 		tcpm_set_cc(port, TYPEC_CC_RD);
+		/*
+		 * A fixed-role sink does not toggle the CC lines, so a
+		 * partner already attached when this state was entered must
+		 * be found by re-reading CC here (see the helper).
+		 */
+		if (tcpm_recheck_cc_unattached(port))
+			break;
 		if (port->port_type == TYPEC_PORT_DRP)
 			tcpm_set_state(port, SRC_UNATTACHED, PD_T_DRP_SRC);
 		break;
@@ -4606,7 +4706,7 @@ static void run_state_machine(struct tcpm_port *port)
 		 */
 		tcpm_set_vconn(port, false);
 		tcpm_set_vbus(port, false);
-		tcpm_set_roles(port, port->self_powered, TYPEC_SOURCE,
+		tcpm_set_roles(port, port->self_powered, TYPEC_STATE_USB, TYPEC_SOURCE,
 			       tcpm_data_role_for_source(port));
 		/*
 		 * If tcpc fails to notify vbus off, TCPM will wait for PD_T_SAFE_0V +
@@ -4638,7 +4738,7 @@ static void run_state_machine(struct tcpm_port *port)
 		tcpm_set_vconn(port, false);
 		if (port->pd_capable)
 			tcpm_set_charge(port, false);
-		tcpm_set_roles(port, port->self_powered, TYPEC_SINK,
+		tcpm_set_roles(port, port->self_powered, TYPEC_STATE_USB, TYPEC_SINK,
 			       tcpm_data_role_for_sink(port));
 		/*
 		 * VBUS may or may not toggle, depending on the adapter.
@@ -4744,10 +4844,10 @@ static void run_state_machine(struct tcpm_port *port)
 	case DR_SWAP_CHANGE_DR:
 		tcpm_unregister_altmodes(port);
 		if (port->data_role == TYPEC_HOST)
-			tcpm_set_roles(port, true, port->pwr_role,
+			tcpm_set_roles(port, true, TYPEC_STATE_USB, port->pwr_role,
 				       TYPEC_DEVICE);
 		else
-			tcpm_set_roles(port, true, port->pwr_role,
+			tcpm_set_roles(port, true, TYPEC_STATE_USB, port->pwr_role,
 				       TYPEC_HOST);
 		tcpm_ams_finish(port);
 		tcpm_set_state(port, ready_state(port), 0);
@@ -4978,7 +5078,11 @@ static void run_state_machine(struct tcpm_port *port)
 		break;
 	case PORT_RESET:
 		tcpm_reset_port(port);
-		tcpm_set_cc(port, TYPEC_CC_RD);
+		if (port->self_powered)
+			tcpm_set_cc(port, TYPEC_CC_OPEN);
+		else
+			tcpm_set_cc(port, tcpm_default_state(port) == SNK_UNATTACHED ?
+				    TYPEC_CC_RD : tcpm_rp_cc(port));
 		tcpm_set_state(port, PORT_RESET_WAIT_OFF,
 			       PD_T_ERROR_RECOVERY);
 		break;

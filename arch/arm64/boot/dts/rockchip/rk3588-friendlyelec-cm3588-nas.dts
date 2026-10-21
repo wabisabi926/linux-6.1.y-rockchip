@@ -220,6 +220,11 @@
 	status = "okay";
 };
 
+&display_subsystem {
+	clocks = <&hdptxphy0>, <&hdptxphy1>;
+	clock-names = "hdmi0_phy_pll", "hdmi1_phy_pll";
+};
+
 &dp0 {
 	status = "okay";
 };
@@ -295,7 +300,7 @@
 	status = "okay";
 
 	#sound-dai-cells = <1>;
-	edid-version = <3>;
+	edid-version = <2>;
 	/* Effective level used to trigger HPD: 0-low, 1-high */
 	hpd-trigger-level = <1>;
 	hdmirx-det-gpios = <&gpio1 RK_PD5 GPIO_ACTIVE_LOW>;
@@ -303,11 +308,11 @@
 	pinctrl-0 = <&hdmim1_rx &hdmirx_det>;
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi1 {
+&hdptxphy1 {
 	status = "okay";
 };
 
@@ -457,7 +462,7 @@
 	vpcie3v3-supply = <&vcc3v3_pcie30>;
 	status = "okay";
 
-	pcie@20 {
+	pcie@0,0 {
 		reg = <0x00200000 0 0 0 0>;
 		#address-cells = <3>;
 		#size-cells = <2>;
@@ -518,7 +523,7 @@
 	vpcie3v3-supply = <&vcc3v3_pcie30>;
 	status = "okay";
 
-	pcie@00 {
+	pcie@0,0 {
 		reg = <0x00000000 0 0 0 0>;
 		#address-cells = <3>;
 		#size-cells = <2>;
@@ -537,7 +542,7 @@
 	vpcie3v3-supply = <&vcc3v3_pcie30>;
 	status = "okay";
 
-	pcie@10 {
+	pcie@0,0 {
 		reg = <0x00100000 0 0 0 0>;
 		#address-cells = <3>;
 		#size-cells = <2>;
@@ -687,7 +692,6 @@
 
 &usbdp_phy0 {
 	orientation-switch;
-	rockchip,dp-lane-mux = <0 1 2 3 >;
 	svid = <0xff01>;
 	sbu1-dc-gpios = <&gpio4 RK_PA6 GPIO_ACTIVE_HIGH>;
 	sbu2-dc-gpios = <&gpio4 RK_PA7 GPIO_ACTIVE_HIGH>;

@@ -15,6 +15,7 @@
 #include "rwnx_defs.h"
 #include "usb_host.h"
 #include "rwnx_platform.h"
+#include "rwnx_msg_tx.h"
 
 #ifdef CONFIG_GPIO_WAKEUP
 #ifdef CONFIG_PLATFORM_ROCKCHIP
@@ -54,6 +55,8 @@ bool aicwf_usb_rx_aggr = true;
 bool aicwf_usb_rx_aggr = false;
 #endif
 atomic_t rx_urb_cnt;
+bool rx_urb_sched = false;
+u32 aicwf_usb_max_pkt_size = AICWF_USB_MAX_PKT_SIZE;
 
 void aicwf_usb_tx_flowctrl(struct rwnx_hw *rwnx_hw, bool state)
 {
@@ -152,25 +155,27 @@ static void aicwf_usb_msg_rx_buf_put(struct aic_usb_dev *usb_dev, struct aicwf_u
 }
 #endif
 
-void rwnx_stop_sta_all_queues(struct rwnx_sta *sta, struct rwnx_hw *rwnx_hw)
+void rwnx_stop_sta_all_queues(void *sta, struct rwnx_hw *rwnx_hw)
 {
-        u8 tid;
-         struct rwnx_txq *txq;
-         for(tid=0; tid<8; tid++) {
-                 txq = rwnx_txq_sta_get(sta, tid, rwnx_hw);
-                 netif_stop_subqueue(txq->ndev, txq->ndev_idx);
-         }
- }
+    u8 tid;
+    struct rwnx_txq *txq;
+	struct rwnx_sta *sta_tmp = (struct rwnx_sta *)sta;
+    for(tid=0; tid<8; tid++) {
+        txq = rwnx_txq_sta_get(sta_tmp, tid, rwnx_hw);
+        netif_stop_subqueue(txq->ndev, txq->ndev_idx);
+    }
+}
 
-void rwnx_wake_sta_all_queues(struct rwnx_sta *sta, struct rwnx_hw *rwnx_hw)
+void rwnx_wake_sta_all_queues(void *sta, struct rwnx_hw *rwnx_hw)
 {
-        u8 tid;
-         struct rwnx_txq *txq;
-         for(tid=0; tid<8; tid++) {
-                 txq = rwnx_txq_sta_get(sta, tid, rwnx_hw);
-                 netif_wake_subqueue(txq->ndev, txq->ndev_idx);
-         }
- }
+    u8 tid;
+    struct rwnx_txq *txq;
+	struct rwnx_sta *sta_tmp = (struct rwnx_sta *)sta;
+    for(tid=0; tid<8; tid++) {
+        txq = rwnx_txq_sta_get(sta_tmp, tid, rwnx_hw);
+        netif_wake_subqueue(txq->ndev, txq->ndev_idx);
+    }
+}
 
 static void usb_txc_sta_flowctrl(struct aicwf_usb_buf *usb_buf, struct aic_usb_dev *usb_dev)
 {
@@ -197,7 +202,7 @@ static void usb_txc_sta_flowctrl(struct aicwf_usb_buf *usb_buf, struct aic_usb_d
 							usb_dev->rwnx_hw->sta_flowctrl[sta_idx].flowctrl) {
 				//AICWFDBG(LOGDEBUG, "sta 0x%x:0x%x, %d pending %d, wake\n", sta->mac_addr[4], sta->mac_addr[5], sta->sta_idx, atomic_read(&usb_dev->rwnx_hw->sta_flowctrl[sta_idx].tx_pending_cnt));
 				if(!usb_dev->tbusy)
-					rwnx_wake_sta_all_queues(sta, usb_dev->rwnx_hw);
+					rwnx_wake_sta_all_queues((void *)sta, usb_dev->rwnx_hw);
 				usb_dev->rwnx_hw->sta_flowctrl[sta_idx].flowctrl = 0;
 			}
 		}
@@ -220,6 +225,7 @@ static void aicwf_usb_tx_complete(struct urb *urb)
 #ifdef CONFIG_USB_ALIGN_DATA
 	if(usb_buf->usb_align_data) {
 		kfree(usb_buf->usb_align_data);
+        usb_buf->usb_align_data = NULL;
 	}
 #endif
 #ifndef CONFIG_USB_TX_AGGR
@@ -256,68 +262,68 @@ void aicwf_usb_rx_submit_all_urb_(struct aic_usb_dev *usb_dev);
 
 #ifdef CONFIG_PREALLOC_RX_SKB
 static void aicwf_usb_rx_complete(struct urb *urb)
-    {
-        struct aicwf_usb_buf *usb_buf = (struct aicwf_usb_buf *) urb->context;
-        struct aic_usb_dev *usb_dev = usb_buf->usbdev;
-        struct aicwf_rx_priv* rx_priv = usb_dev->rx_priv;
-        struct rx_buff *rx_buff = NULL;
-        unsigned long flags = 0;
-    
-        rx_buff = usb_buf->rx_buff;
-        usb_buf->rx_buff = NULL;
-    
-        atomic_dec(&rx_urb_cnt);
-        if(atomic_read(&rx_urb_cnt) < 10){
-            AICWFDBG(LOGDEBUG, "%s %d \r\n", __func__, atomic_read(&rx_urb_cnt));
-            //printk("%s %d \r\n", __func__, atomic_read(&rx_urb_cnt));
-        }
+{
+    struct aicwf_usb_buf *usb_buf = (struct aicwf_usb_buf *) urb->context;
+    struct aic_usb_dev *usb_dev = usb_buf->usbdev;
+    struct aicwf_rx_priv* rx_priv = usb_dev->rx_priv;
+    struct rx_buff *rx_buff = NULL;
+    unsigned long flags = 0;
 
-        if(!usb_dev->rwnx_hw){
-            aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
-            aicwf_usb_rx_buf_put(usb_dev, usb_buf);
-            AICWFDBG(LOGERROR, "usb_dev->rwnx_hw is not ready \r\n");
+    rx_buff = usb_buf->rx_buff;
+    usb_buf->rx_buff = NULL;
+
+    atomic_dec(&rx_urb_cnt);
+    if(atomic_read(&rx_urb_cnt) < 10){
+        AICWFDBG(LOGDEBUG, "%s %d \r\n", __func__, atomic_read(&rx_urb_cnt));
+        //printk("%s %d \r\n", __func__, atomic_read(&rx_urb_cnt));
+    }
+
+    if(!usb_dev->rwnx_hw){
+        aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
+        aicwf_usb_rx_buf_put(usb_dev, usb_buf);
+        AICWFDBG(LOGERROR, "usb_dev->rwnx_hw is not ready \r\n");
+        return;
+    }
+
+    if (urb->actual_length > urb->transfer_buffer_length) {
+        aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
+        aicwf_usb_rx_buf_put(usb_dev, usb_buf);
+        aicwf_usb_rx_submit_all_urb_(usb_dev);
+        return;
+    }
+
+    if (urb->status != 0 || !urb->actual_length) {
+        aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
+        aicwf_usb_rx_buf_put(usb_dev, usb_buf);
+        if(urb->status < 0){
+            AICWFDBG(LOGDEBUG, "%s urb->status:%d \r\n", __func__, urb->status);
+
+            if(g_rwnx_plat->wait_disconnect_cb == false){
+                g_rwnx_plat->wait_disconnect_cb = true;
+                if(atomic_read(&aicwf_deinit_atomic) > 0){
+                    atomic_set(&aicwf_deinit_atomic, 0);
+                    down(&aicwf_deinit_sem);
+                    AICWFDBG(LOGINFO, "%s need to wait for disconnect callback \r\n", __func__);
+                }else{
+                    g_rwnx_plat->wait_disconnect_cb = false;
+                }
+            }
+
             return;
-        }
-    
-        if (urb->actual_length > urb->transfer_buffer_length) {
-            aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
-            aicwf_usb_rx_buf_put(usb_dev, usb_buf);
+        }else{
+            //schedule_work(&usb_dev->rx_urb_work);
             aicwf_usb_rx_submit_all_urb_(usb_dev);
             return;
         }
-    
-        if (urb->status != 0 || !urb->actual_length) {
-            aicwf_usb_prealloc_rxbuff_free(rx_buff, &rx_priv->rxbuff_lock);
-            aicwf_usb_rx_buf_put(usb_dev, usb_buf);
-            if(urb->status < 0){
-                AICWFDBG(LOGDEBUG, "%s urb->status:%d \r\n", __func__, urb->status);
-    
-                if(g_rwnx_plat->wait_disconnect_cb == false){
-                    g_rwnx_plat->wait_disconnect_cb = true;
-                    if(atomic_read(&aicwf_deinit_atomic) > 0){
-                        atomic_set(&aicwf_deinit_atomic, 0);
-                        down(&aicwf_deinit_sem);
-                        AICWFDBG(LOGINFO, "%s need to wait for disconnect callback \r\n", __func__);
-                    }else{
-                        g_rwnx_plat->wait_disconnect_cb = false;
-                    }
-                }
-    
-                return;
-            }else{
-                //schedule_work(&usb_dev->rx_urb_work);
-                aicwf_usb_rx_submit_all_urb_(usb_dev);
-                return;
-            }
-        }
-    
+    }
+
     if (usb_dev->state == USB_UP_ST) {
         spin_lock_irqsave(&rx_priv->rxqlock, flags);
-        if (aicwf_usb_rx_aggr) {
-	        rx_buff->len = urb->actual_length;
+        //if (aicwf_usb_rx_aggr) {
+            rx_buff->len = urb->actual_length;
             //printk("%s rx_buff->len:%d \r\n", __func__, rx_buff->len);
-        }
-        
+        //}
+
         if(!aicwf_rxbuff_enqueue(usb_dev->dev, &rx_priv->rxq, rx_buff)){
             spin_unlock_irqrestore(&rx_priv->rxqlock, flags);
             usb_err("rx_priv->rxq is over flow!!!\n");
@@ -328,7 +334,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
         }
         spin_unlock_irqrestore(&rx_priv->rxqlock, flags);
         atomic_inc(&rx_priv->rx_cnt);
-            
+
         if(atomic_read(&rx_priv->rx_cnt) == 1){
             complete(&rx_priv->usbdev->bus_if->busrx_trgg);
         }
@@ -425,7 +431,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
                         reassemble_done = true;
                     }
                 } else {
-                    if (frag_len == AICWF_USB_MAX_PKT_SIZE) {
+                    if (frag_len == aicwf_usb_max_pkt_size) {
                         reassemble_valid = true;
                     }
                 }
@@ -470,7 +476,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
                 u32 pkt_len = skb->data[0] | (skb->data[1] << 8);
                 if ((type & USB_TYPE_CFG) != USB_TYPE_CFG) {
                     u32 pkt_total_len = pkt_len + RX_HWHRD_LEN;
-                    if ((pkt_total_len > AICWF_USB_MAX_PKT_SIZE) && (skb->len == AICWF_USB_MAX_PKT_SIZE)) {
+                    if ((pkt_total_len > aicwf_usb_max_pkt_size) && (skb->len == aicwf_usb_max_pkt_size)) {
                         AICWFDBG(LOGINFO, "reassemble pkt, len=%u\n", pkt_total_len);
                         struct sk_buff *reassemble_skb = __dev_alloc_skb(pkt_total_len, GFP_ATOMIC/*GFP_KERNEL*/);
                         if (reassemble_skb) {
@@ -479,7 +485,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
                             rx_priv->rx_reassemble_skb = reassemble_skb;
                             rx_priv->rx_reassemble_total_len = pkt_total_len;
                             rx_priv->rx_reassemble_cur_len = skb->len;
-                            rx_priv->rx_reassemble_total_frags = ALIGN(pkt_total_len, AICWF_USB_MAX_PKT_SIZE) / AICWF_USB_MAX_PKT_SIZE;
+                            rx_priv->rx_reassemble_total_frags = ALIGN(pkt_total_len, aicwf_usb_max_pkt_size) / aicwf_usb_max_pkt_size;
                             rx_priv->rx_reassemble_cur_frags = 1;
                         } else {
                             usb_err("reassemble pkt alloc fail, len=%u\n", pkt_total_len);
@@ -495,7 +501,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
                 } else {
                     if (type == USB_TYPE_CFG_CMD_RSP) {
                         u32 pkt_total_len = ALIGN((pkt_len + 4), 4);
-                        if ((pkt_total_len > AICWF_USB_MAX_PKT_SIZE) && (skb->len == AICWF_USB_MAX_PKT_SIZE)) {
+                        if ((pkt_total_len > aicwf_usb_max_pkt_size) && (skb->len == aicwf_usb_max_pkt_size)) {
                             AICWFDBG(LOGINFO, "reassemble pkt, len=%u\n", pkt_total_len);
                             struct sk_buff *reassemble_skb = __dev_alloc_skb(pkt_total_len, GFP_ATOMIC/*GFP_KERNEL*/);
                             if (reassemble_skb) {
@@ -504,7 +510,7 @@ static void aicwf_usb_rx_complete(struct urb *urb)
                                 rx_priv->rx_reassemble_skb = reassemble_skb;
                                 rx_priv->rx_reassemble_total_len = pkt_total_len;
                                 rx_priv->rx_reassemble_cur_len = skb->len;
-                                rx_priv->rx_reassemble_total_frags = ALIGN(pkt_total_len, AICWF_USB_MAX_PKT_SIZE) / AICWF_USB_MAX_PKT_SIZE;
+                                rx_priv->rx_reassemble_total_frags = ALIGN(pkt_total_len, aicwf_usb_max_pkt_size) / aicwf_usb_max_pkt_size;
                                 rx_priv->rx_reassemble_cur_frags = 1;
                             } else {
                                 usb_err("reassemble pkt alloc fail, len=%u\n", pkt_total_len);
@@ -751,9 +757,10 @@ static int aicwf_usb_submit_rx_urb(struct aic_usb_dev *usb_dev,
     rx_buff =  aicwf_usb_prealloc_rxbuff_alloc(&usb_dev->rx_priv->rxbuff_lock);
 	if (rx_buff == NULL) {
 		AICWFDBG(LOGERROR, "failed to alloc rxbuff\r\n");
-        aicwf_usb_rx_buf_put(usb_dev, usb_buf);
-        return -1;
-    }
+		aicwf_usb_rx_buf_put(usb_dev, usb_buf);
+		rx_urb_sched = true;
+		return -1;
+	}
 	rx_buff->len = 0;
 	rx_buff->start = rx_buff->data;
 	rx_buff->read = rx_buff->start;
@@ -776,7 +783,7 @@ static int aicwf_usb_submit_rx_urb(struct aic_usb_dev *usb_dev,
         aicwf_usb_prealloc_rxbuff_free(rx_buff, &usb_dev->rx_priv->rxbuff_lock);
         aicwf_usb_rx_buf_put(usb_dev, usb_buf);
 
-        msleep(100);
+        mdelay(100);
 	    return -1;
     }else{
     	atomic_inc(&rx_urb_cnt);
@@ -801,9 +808,9 @@ static int aicwf_usb_submit_rx_urb(struct aic_usb_dev *usb_dev,
     }
 
     if(aicwf_usb_rx_aggr){
-	skb = __dev_alloc_skb(AICWF_USB_AGGR_MAX_PKT_SIZE, GFP_ATOMIC/*GFP_KERNEL*/);
+        skb = __dev_alloc_skb(AICWF_USB_AGGR_MAX_PKT_SIZE, GFP_ATOMIC/*GFP_KERNEL*/);
     } else {
-	skb = __dev_alloc_skb(AICWF_USB_MAX_PKT_SIZE, GFP_ATOMIC/*GFP_KERNEL*/);
+        skb = __dev_alloc_skb(aicwf_usb_max_pkt_size, GFP_ATOMIC/*GFP_KERNEL*/);
     }
     if (!skb) {
         aicwf_usb_rx_buf_put(usb_dev, usb_buf);
@@ -821,7 +828,7 @@ static int aicwf_usb_submit_rx_urb(struct aic_usb_dev *usb_dev,
         usb_fill_bulk_urb(usb_buf->urb,
             usb_dev->udev,
             usb_dev->bulk_in_pipe,
-            skb->data, AICWF_USB_MAX_PKT_SIZE, aicwf_usb_rx_complete, usb_buf);
+            skb->data, aicwf_usb_max_pkt_size, aicwf_usb_rx_complete, usb_buf);
     }
 
     usb_buf->usbdev = usb_dev;
@@ -835,11 +842,11 @@ static int aicwf_usb_submit_rx_urb(struct aic_usb_dev *usb_dev,
         usb_buf->skb = NULL;
         aicwf_usb_rx_buf_put(usb_dev, usb_buf);
 
-        msleep(100);
-	    return -1;
+        mdelay(100);
+        return -1;
     }else{
-    	atomic_inc(&rx_urb_cnt);
-	}
+        atomic_inc(&rx_urb_cnt);
+    }
     return 0;
 }
 #endif
@@ -857,7 +864,7 @@ static void aicwf_usb_rx_submit_all_urb(struct aic_usb_dev *usb_dev)
     while((usb_buf = aicwf_usb_rx_buf_get(usb_dev)) != NULL) {
         if (aicwf_usb_submit_rx_urb(usb_dev, usb_buf)) {
             AICWFDBG(LOGERROR, "sub rx fail\n");
-		return;
+            return;
             #if 0
             AICWFDBG(LOGERROR, "usb rx refill fail\n");
             if (usb_dev->state != USB_UP_ST)
@@ -908,7 +915,7 @@ static int aicwf_usb_submit_msg_rx_urb(struct aic_usb_dev *usb_dev,
         usb_buf->skb = NULL;
         aicwf_usb_msg_rx_buf_put(usb_dev, usb_buf);
 
-        msleep(100);
+        mdelay(100);
     }
     return 0;
 }
@@ -1330,11 +1337,11 @@ int usb_busrx_thread(void *data)
 #ifdef CONFIG_TXRX_THREAD_PRIO
 	if (busrx_thread_prio > 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-            sched_set_fifo_low(current);
+        sched_set_fifo_low(current);
 #else
-			struct sched_param param;
-			param.sched_priority = (busrx_thread_prio < MAX_RT_PRIO)?busrx_thread_prio:(MAX_RT_PRIO-1);
-			sched_setscheduler(current, SCHED_FIFO, &param);
+		struct sched_param param;
+		param.sched_priority = (busrx_thread_prio < MAX_RT_PRIO)?busrx_thread_prio:(MAX_RT_PRIO-1);
+		sched_setscheduler(current, SCHED_FIFO, &param);
 #endif
 	}
 #endif
@@ -1373,19 +1380,19 @@ int usb_msg_busrx_thread(void *data)
     struct aicwf_bus *bus_if = rx_priv->usbdev->bus_if;
 
 #ifdef CONFIG_TXRX_THREAD_PRIO
-			if (busrx_thread_prio > 0) {
+	if (busrx_thread_prio > 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0))
-                sched_set_fifo_low(current);
+        sched_set_fifo_low(current);
 #else
-                struct sched_param param;
-                param.sched_priority = (busrx_thread_prio < MAX_RT_PRIO)?busrx_thread_prio:(MAX_RT_PRIO-1);
-                sched_setscheduler(current, SCHED_FIFO, &param);
+        struct sched_param param;
+        param.sched_priority = (busrx_thread_prio < MAX_RT_PRIO)?busrx_thread_prio:(MAX_RT_PRIO-1);
+        sched_setscheduler(current, SCHED_FIFO, &param);
 #endif
-			}
+	}
 #endif
-			AICWFDBG(LOGINFO, "%s the policy of current thread is:%d\n", __func__, current->policy);
-			AICWFDBG(LOGINFO, "%s the rt_priority of current thread is:%d\n", __func__, current->rt_priority);
-			AICWFDBG(LOGINFO, "%s the current pid is:%d\n", __func__, current->pid);
+	AICWFDBG(LOGINFO, "%s the policy of current thread is:%d\n", __func__, current->policy);
+	AICWFDBG(LOGINFO, "%s the rt_priority of current thread is:%d\n", __func__, current->rt_priority);
+	AICWFDBG(LOGINFO, "%s the current pid is:%d\n", __func__, current->pid);
 
 
 
@@ -1504,7 +1511,7 @@ static void aicwf_usb_free_urb(struct list_head *q, spinlock_t *qlock)
 
     spin_lock_irqsave(qlock, flags);
     list_for_each_entry_safe(usb_buf, tmp, q, list) {
-    spin_unlock_irqrestore(qlock, flags);
+        spin_unlock_irqrestore(qlock, flags);
         if (!usb_buf->urb) {
             usb_err("bad usb_buf\n");
             spin_lock_irqsave(qlock, flags);
@@ -1605,7 +1612,7 @@ err:
 static int aicwf_usb_alloc_msg_rx_urb(struct aic_usb_dev *usb_dev)
 {
     int i;
-    
+
     AICWFDBG(LOGINFO, "%s AICWF_USB_MSG_RX_URBS:%d \r\n", __func__, AICWF_USB_MSG_RX_URBS);
 
     for (i = 0; i < AICWF_USB_MSG_RX_URBS; i++) {
@@ -1669,7 +1676,7 @@ static void usb_tx_flow_ctrl(struct rwnx_txhdr *txhdr, struct aic_usb_dev *usb_d
 										rwnx_hw->sta_flowctrl[sta_idx].flowctrl) {
 				//AICWFDBG(LOGDEBUG, "sta 0x%x:0x%x, %d pending %d, stop\n", sta->mac_addr[4], sta->mac_addr[5], sta->sta_idx, atomic_read(&rwnx_hw->sta_flowctrl[sta_idx].tx_pending_cnt));
 				if(!usb_dev->tbusy)
-					rwnx_stop_sta_all_queues(sta, usb_dev->rwnx_hw);
+					rwnx_stop_sta_all_queues((void *)sta, usb_dev->rwnx_hw);
 				rwnx_hw->sta_flowctrl[sta_idx].flowctrl = 1;
 			}
 		}
@@ -1728,7 +1735,8 @@ static int aicwf_usb_bus_txdata(struct device *dev, struct sk_buff *skb)
     u16 index = 0;
     bool need_cfm = false;
 #ifdef CONFIG_USB_ALIGN_DATA//AIDEN
-	int align;
+    u8 *buf_align;
+    int align;
 #endif
 
     if (usb_dev->state != USB_UP_ST) {
@@ -1823,6 +1831,7 @@ static int aicwf_usb_bus_txdata(struct device *dev, struct sk_buff *skb)
     #if defined CONFIG_USB_NO_TRANS_DMA_MAP
     #error "CONFIG_USB_NO_TRANS_DMA_MAP not supported"
     #endif
+#if 0
 	usb_buf->usb_align_data = (u8*)kmalloc(sizeof(u8) * buf_len + align_param, GFP_ATOMIC);
 
 	align = ((unsigned long)(usb_buf->usb_align_data)) & (align_param - 1);
@@ -1830,6 +1839,21 @@ static int aicwf_usb_bus_txdata(struct device *dev, struct sk_buff *skb)
 
     usb_fill_bulk_urb(usb_buf->urb, usb_dev->udev, usb_dev->bulk_out_pipe,
                 usb_buf->usb_align_data + (align_param - align), buf_len, aicwf_usb_tx_complete, usb_buf);
+#else
+    if (!IS_ALIGNED((unsigned long)buf, align_param)) {
+        usb_buf->usb_align_data = (u8*)kmalloc(sizeof(u8) * buf_len + align_param, GFP_ATOMIC);
+        if (usb_buf->usb_align_data) {
+            align = ((unsigned long)(usb_buf->usb_align_data)) & (align_param - 1);
+            buf_align = usb_buf->usb_align_data + (align_param - align);
+            memcpy(buf_align, buf, buf_len);
+        }
+    } else {
+        buf_align = buf;
+    }
+
+    usb_fill_bulk_urb(usb_buf->urb, usb_dev->udev, usb_dev->bulk_out_pipe,
+                buf_align, buf_len, aicwf_usb_tx_complete, usb_buf);
+#endif
 #else
 	usb_fill_bulk_urb(usb_buf->urb, usb_dev->udev, usb_dev->bulk_out_pipe,
 			buf, buf_len, aicwf_usb_tx_complete, usb_buf);
@@ -1933,7 +1957,7 @@ static void aicwf_usb_cancel_all_urbs_(struct aic_usb_dev *usb_dev)
     usb_kill_anchored_urbs(&usb_dev->rx_submitted);
 #ifdef CONFIG_USB_MSG_IN_EP
 	if(usb_dev->msg_in_pipe){
-   		usb_kill_anchored_urbs(&usb_dev->msg_rx_submitted);
+		usb_kill_anchored_urbs(&usb_dev->msg_rx_submitted);
 	}
 #endif
 }
@@ -1956,8 +1980,8 @@ static void aicwf_usb_bus_stop(struct device *dev)
         return;
 
     if(g_rwnx_plat && g_rwnx_plat->wait_disconnect_cb == true){
-            atomic_set(&aicwf_deinit_atomic, 1);
-            up(&aicwf_deinit_sem);
+        atomic_set(&aicwf_deinit_atomic, 1);
+        up(&aicwf_deinit_sem);
     }
     aicwf_usb_state_change(usb_dev, USB_DOWN_ST);
     //aicwf_usb_cancel_all_urbs(usb_dev);//AIDEN
@@ -2117,18 +2141,24 @@ static int aicwf_parse_usb(struct aic_usb_dev *usb_dev, struct usb_interface *in
 
     /* Check interface number */
 #ifdef CONFIG_USB_BT
-    if (usb->actconfig->desc.bNumInterfaces != 3) {
+    if (usb->actconfig->desc.bNumInterfaces != 3)
 #else
-    if (usb->actconfig->desc.bNumInterfaces != 1) {
+    if (usb->actconfig->desc.bNumInterfaces != 1)
 #endif
+    {
 	   AICWFDBG(LOGERROR, "Number of interfaces: %d not supported\n",
             usb->actconfig->desc.bNumInterfaces);
 		if(usb_dev->chipid == PRODUCT_ID_AIC8800DC){
 			AICWFDBG(LOGERROR, "AIC8800DC change to AIC8800DW\n");
 			usb_dev->chipid = PRODUCT_ID_AIC8800DW;
-		}else if (usb_dev->chipid == PRODUCT_ID_AIC8800D81) {
-			AICWFDBG(LOGERROR, "AIC8800D80\n");
-        } else {
+		} else if (usb_dev->chipid == PRODUCT_ID_AIC8800D80N) {
+			AICWFDBG(LOGERROR, "AIC8800D80N change to AIC8800D80WN\n");
+		} else if (usb_dev->chipid == PRODUCT_ID_AIC8800DLN) {
+			AICWFDBG(LOGERROR, "AIC8800DLN change to AIC8800DWN\n");
+		}else if(usb_dev->chipid == PRODUCT_ID_AIC8800D81X2 ||
+                usb_dev->chipid == PRODUCT_ID_AIC8800D89X2){
+            //TODO
+        }else{
 			ret = -ENODEV;
 			goto exit;
 		}
@@ -2193,17 +2223,33 @@ static int aicwf_parse_usb(struct aic_usb_dev *usb_dev, struct usb_interface *in
     }
 #endif
 #ifdef CONFIG_USB_MSG_IN_EP
-		if(usb_dev->chipid != PRODUCT_ID_AIC8801){
-			if (usb_dev->msg_in_pipe == 0) {
-				AICWFDBG(LOGINFO, "No RX Msg (in) Bulk EP found\n");
-			}
+	if(usb_dev->chipid != PRODUCT_ID_AIC8801){
+		if (usb_dev->msg_in_pipe == 0) {
+			AICWFDBG(LOGINFO, "No RX Msg (in) Bulk EP found\n");
 		}
+	}
 #endif
 
-    if (usb->speed == USB_SPEED_HIGH){
-		AICWFDBG(LOGINFO, "Aic high speed USB device detected\n");
-    }else{
-    	AICWFDBG(LOGINFO, "Aic full speed USB device detected\n");
+    switch (usb->speed) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0)
+    case USB_SPEED_SUPER_PLUS:
+        AICWFDBG(LOGINFO, "Aic super plus speed USB device detected\n");
+        break;
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)
+    case USB_SPEED_SUPER:
+        AICWFDBG(LOGINFO, "Aic super speed USB device detected\n");
+        break;
+#endif
+    case USB_SPEED_HIGH:
+        AICWFDBG(LOGINFO, "Aic high speed USB device detected\n");
+        break;
+    case USB_SPEED_FULL:
+        AICWFDBG(LOGINFO, "Aic full speed USB device detected\n");
+        break;
+    default:
+        AICWFDBG(LOGINFO, "Aic unknown speed(%d) USB device detected\n", usb->speed);
+        break;
     }
 
     exit:
@@ -2301,13 +2347,56 @@ static int aicwf_usb_chipmatch(struct aic_usb_dev *usb_dev, u16_l vid, u16_l pid
         usb_dev->chipid = PRODUCT_ID_AIC8800DW;
 		AICWFDBG(LOGINFO, "%s USE AIC8800DW\r\n", __func__);
         return 0;
-    }else if(pid == USB_PRODUCT_ID_AIC8800D81 || vid == USB_VENDOR_ID_TP || pid == USB_PRODUCT_ID_AIC8800D83
-         || vid == USB_VENDOR_ID_TENDA || pid == USB_PRODUCT_ID_AIC8800D84 || pid == USB_PRODUCT_ID_AIC8800D85){
+    }else if(pid == USB_PRODUCT_ID_AIC8800D81 || pid == USB_PRODUCT_ID_AIC8800D41){
         usb_dev->chipid = PRODUCT_ID_AIC8800D81;
         aicwf_usb_rx_aggr = true;
-		AICWFDBG(LOGINFO, "%s USE AIC8800D81\r\n", __func__);
+        AICWFDBG(LOGINFO, "%s USE AIC8800D81\r\n", __func__);
         return 0;
-    }else{
+    }else if(pid == USB_PRODUCT_ID_AIC8800D81X2){
+        usb_dev->chipid = PRODUCT_ID_AIC8800D81X2;
+        aicwf_usb_max_pkt_size = AICWF_USB_MAX_AMSDU_PKT_SIZE;
+        if (usb_dev->udev->speed <= USB_SPEED_HIGH) {
+            aicwf_usb_rx_aggr = true;
+        } else {
+            #ifdef CONFIG_PLATFORM_HI
+            aicwf_usb_rx_aggr = true;
+            #else
+            aicwf_usb_rx_aggr = false;
+            #endif
+        }
+        AICWFDBG(LOGINFO, "%s USE AIC8800D81X2\r\n", __func__);
+        return 0;
+    }else if(pid == USB_PRODUCT_ID_AIC8800D89X2){
+        usb_dev->chipid = PRODUCT_ID_AIC8800D89X2;
+        aicwf_usb_max_pkt_size = AICWF_USB_MAX_AMSDU_PKT_SIZE;
+        if (usb_dev->udev->speed <= USB_SPEED_HIGH) {
+            aicwf_usb_rx_aggr = true;
+        } else {
+            #ifdef CONFIG_PLATFORM_HI
+            aicwf_usb_rx_aggr = true;
+            #else
+            aicwf_usb_rx_aggr = false;
+            #endif
+        }
+        AICWFDBG(LOGINFO, "%s USE AIC8800D89X2\r\n", __func__);
+        return 0;
+    } else if ((pid == USB_PRODUCT_ID_AIC8800D80N) ||
+               (pid == USB_PRODUCT_ID_AIC8800D80LN) ||
+               (pid == USB_PRODUCT_ID_AIC8800D80WN) ||
+               (pid == USB_PRODUCT_ID_AIC8800D40N) ||
+               (pid == USB_PRODUCT_ID_AIC8800D40LN) ||
+               (pid == USB_PRODUCT_ID_AIC8800D40WN)) {
+        usb_dev->chipid = PRODUCT_ID_AIC8800D80N;
+        aicwf_usb_rx_aggr = true;
+        AICWFDBG(LOGINFO, "%s USE AIC8800D80N\r\n", __func__);
+        return 0;
+    } else if ((pid == USB_PRODUCT_ID_AIC8800DLN) ||
+               (pid == USB_PRODUCT_ID_AIC8800DWN)) {
+        usb_dev->chipid = PRODUCT_ID_AIC8800DLN;
+        aicwf_usb_rx_aggr = true;
+        AICWFDBG(LOGINFO, "%s USE AIC8800DLN\r\n", __func__);
+        return 0;
+    } else{
 		return -1;
 	}
 }
@@ -2326,7 +2415,7 @@ static int aicwf_usb_probe(struct usb_interface *intf, const struct usb_device_i
     #endif
 
     usb_dev = kzalloc(sizeof(struct aic_usb_dev), GFP_ATOMIC);
-    
+
     AICWFDBG(LOGDEBUG, "%s usb_dev:%d usb_tx_buf:%d usb_rx_buf:%d\r\n", 
         __func__, 
         (int)sizeof(struct aic_usb_dev),
@@ -2361,7 +2450,7 @@ static int aicwf_usb_probe(struct usb_interface *intf, const struct usb_device_i
     memset(usb_dev->usb_tx_buf, 
         0, 
         (int)(sizeof(struct aicwf_usb_buf) * AICWF_USB_TX_URBS));
-    
+
     memset(usb_dev->usb_rx_buf, 
         0, 
         (int)(sizeof(struct aicwf_usb_buf) * AICWF_USB_RX_URBS));
@@ -2370,9 +2459,9 @@ static int aicwf_usb_probe(struct usb_interface *intf, const struct usb_device_i
     usb_dev->udev = usb;
     usb_dev->dev = &usb->dev;
     usb_set_intfdata(intf, usb_dev);
-	
+
 	ret = aicwf_usb_chipmatch(usb_dev, id->idVendor, id->idProduct);
-	
+
 	if (ret < 0) {
         AICWFDBG(LOGERROR, "%s pid:0x%04X vid:0x%04X unsupport\n", 
 			__func__, id->idVendor, id->idProduct);
@@ -2468,7 +2557,7 @@ static void aicwf_usb_disconnect(struct usb_interface *intf)
 {
     struct aic_usb_dev *usb_dev =
             (struct aic_usb_dev *) usb_get_intfdata(intf);
-        AICWFDBG(LOGINFO, "%s Enter\r\n", __func__);
+    AICWFDBG(LOGINFO, "%s Enter\r\n", __func__);
 
 	if(g_rwnx_plat->wait_disconnect_cb == false){
 		atomic_set(&aicwf_deinit_atomic, 0);
@@ -2505,60 +2594,54 @@ static void aicwf_usb_disconnect(struct usb_interface *intf)
 static int aicwf_usb_suspend(struct usb_interface *intf, pm_message_t state)
 {
     struct aic_usb_dev *usb_dev =
-        (struct aic_usb_dev *) usb_get_intfdata(intf);
-#ifdef CONFIG_GPIO_WAKEUP
-	struct rwnx_vif *rwnx_vif, *tmp;
-	//unsigned long irqflags;
+    (struct aic_usb_dev *) usb_get_intfdata(intf);
+    struct rwnx_vif *rwnx_vif, *tmp;
+        
+    AICWFDBG(LOGINFO, "%s enter\r\n", __func__);
+#ifdef CONFIG_WOWLAN 
+#ifndef ANDROID_PLATFORM
+    rwnx_send_dummy_reboot(usb_dev->rwnx_hw);
 #endif
-
-	printk("%s enter\r\n", __func__);
-
-#ifdef CONFIG_GPIO_WAKEUP
-//	spin_lock_irqsave(&irq_lock, irqflags);
-//	rwnx_enable_hostwake_irq();
-//    spin_unlock_irqrestore(&irq_lock, irqflags);
-    atomic_inc(&irq_count);
-
-	list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
-		if (rwnx_vif->ndev)
-			netif_device_detach(rwnx_vif->ndev);
-	}
-#endif
-
-	aicwf_usb_state_change(usb_dev, USB_SLEEP_ST);
+#endif       
+    list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
+        if (rwnx_vif->ndev){
+            netif_tx_stop_all_queues(rwnx_vif->ndev);
+            mdelay(1000);
+        }
+    }
+    aicwf_usb_state_change(usb_dev, USB_SLEEP_ST);
     aicwf_bus_stop(usb_dev->bus_if);
 
+    list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
+        if (rwnx_vif->ndev)
+            netif_device_detach(rwnx_vif->ndev);
+    }
 
-    return 0;
+return 0;
 }
 
 static int aicwf_usb_resume(struct usb_interface *intf)
 {
     struct aic_usb_dev *usb_dev =
-        (struct aic_usb_dev *) usb_get_intfdata(intf);
-#ifdef CONFIG_GPIO_WAKEUP
-	struct rwnx_vif *rwnx_vif, *tmp;
-//	unsigned long irqflags;
-#endif
-	printk("%s enter\r\n", __func__);
+         (struct aic_usb_dev *) usb_get_intfdata(intf);
+    struct rwnx_vif *rwnx_vif, *tmp;
+    AICWFDBG(LOGINFO, "%s enter\r\n", __func__);
+    list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
+        if (rwnx_vif->ndev)
+            netif_device_attach(rwnx_vif->ndev);
+    }
 
-#ifdef CONFIG_GPIO_WAKEUP
-//	spin_lock_irqsave(&irq_lock, irqflags);
-//	rwnx_disable_hostwake_irq();
-//	spin_unlock_irqrestore(&irq_lock, irqflags);
-	atomic_dec(&irq_count);
+        if (usb_dev->state != USB_UP_ST){
+            aicwf_bus_start(usb_dev->bus_if);
+            g_rwnx_plat->wait_disconnect_cb = false;
+        }
 
-	list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
-		if (rwnx_vif->ndev)
-			netif_device_attach(rwnx_vif->ndev);
-	}
-#endif
-
-    if (usb_dev->state == USB_UP_ST)
-        return 0;
-
-    aicwf_bus_start(usb_dev->bus_if);
-    return 0;
+    list_for_each_entry_safe(rwnx_vif, tmp, &usb_dev->rwnx_hw->vifs, list) {
+        if (rwnx_vif->ndev){
+            netif_tx_wake_all_queues(rwnx_vif->ndev);
+        }
+    }
+     return 0;
 }
 
 static int aicwf_usb_reset_resume(struct usb_interface *intf)
@@ -2575,14 +2658,16 @@ static struct usb_device_id aicwf_usb_id_table[] = {
     {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC, USB_PRODUCT_ID_AIC8800D41, 0xff, 0xff, 0xff)},
     {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC, USB_PRODUCT_ID_AIC8800DC, 0xff, 0xff, 0xff)},
     {USB_DEVICE(USB_VENDOR_ID_AIC, USB_PRODUCT_ID_AIC8800DW)},
-    {USB_DEVICE(USB_VENDOR_ID_AIC, USB_PRODUCT_ID_AIC8800D83)},
-    {USB_DEVICE(USB_VENDOR_ID_TP, USB_PRODUCT_ID_TP)},
-    {USB_DEVICE(USB_VENDOR_ID_TP, USB_PRODUCT_ID_MERCURY)},
-    {USB_DEVICE(USB_VENDOR_ID_TP, USB_PRODUCT_ID_FAST)},
-    {USB_DEVICE(USB_VENDOR_ID_TENDA, USB_PRODUCT_ID_TENDA)},
-    {USB_DEVICE(USB_VENDOR_ID_AIC_USB, USB_PRODUCT_ID_AIC8800D83)},
-    {USB_DEVICE(USB_VENDOR_ID_AIC_USB, USB_PRODUCT_ID_AIC8800D84)},
-    {USB_DEVICE(USB_VENDOR_ID_AIC_USB, USB_PRODUCT_ID_AIC8800D85)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D81X2, 0xff, 0xff, 0xff)},
+    {USB_DEVICE(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D89X2)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D80N, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D80LN, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D80WN, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D40N, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D40LN, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800D40WN, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800DLN, 0xff, 0xff, 0xff)},
+    {USB_DEVICE_AND_INTERFACE_INFO(USB_VENDOR_ID_AIC_V2, USB_PRODUCT_ID_AIC8800DWN, 0xff, 0xff, 0xff)},
 #endif
     {}
 };
@@ -2618,7 +2703,7 @@ void aicwf_usb_exit(void)
 {
     int retry = 5;
     AICWFDBG(LOGINFO, "%s Enter\r\n", __func__);
-        
+
     AICWFDBG(LOGDEBUG, "%s in_interrupt:%d in_softirq:%d in_atomic:%d\r\n", __func__, (int)in_interrupt(), (int)in_softirq(), (int)in_atomic());
 
     do{
@@ -2630,7 +2715,7 @@ void aicwf_usb_exit(void)
             break;
         }
     }while(atomic_read(&aicwf_deinit_atomic) == 0);
-    
+
 	atomic_set(&aicwf_deinit_atomic, 0);
 	if(down_timeout(&aicwf_deinit_sem, msecs_to_jiffies(SEM_TIMOUT)) != 0){
 		AICWFDBG(LOGERROR, "%s semaphore waiting timeout\r\n", __func__);

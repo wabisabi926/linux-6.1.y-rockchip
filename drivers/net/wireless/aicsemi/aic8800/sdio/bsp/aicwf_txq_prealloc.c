@@ -50,7 +50,7 @@ void *aicwf_sdio_prealloc_txq_alloc(size_t size)
 }
 EXPORT_SYMBOL(aicwf_sdio_prealloc_txq_alloc);
 
-void aicwf_sdio_prealloc_txq_free(void)
+void aicwf_prealloc_txq_free(void)
 {
     if(prealloc_txq.txq != NULL)
     {
@@ -59,4 +59,3 @@ void aicwf_sdio_prealloc_txq_free(void)
         prealloc_txq.txq = NULL;
     }
 }
-EXPORT_SYMBOL(aicwf_sdio_prealloc_txq_free);

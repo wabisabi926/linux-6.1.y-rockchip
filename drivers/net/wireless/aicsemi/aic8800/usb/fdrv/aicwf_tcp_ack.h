@@ -8,6 +8,7 @@
 #include <linux/moduleparam.h>
 #include <net/tcp.h>
 #include <linux/timer.h>
+#include <linux/version.h>
 
 
 #define TCP_ACK_NUM  32
@@ -27,26 +28,7 @@ struct msg_buf {
 	//struct list_head list;
 	struct sk_buff *skb;
 	struct rwnx_vif *rwnx_vif;
-
 	/* data just tx cmd use,not include the head */
-	/*void *data;
-	void *tran_data;
-	unsigned long pcie_addr;
-	u8 type;
-	u8 mode;
-	u16 len;
-	unsigned long timeout;*/
-
-	/*unsigned int fifo_id;
-	struct sprdwl_msg_list *msglist;*/
-
-	/*unsigned char buffer_type;
-	struct sprdwl_xmit_msg_list *xmit_msg_list;
-	unsigned char msg_type;
-
-	unsigned long last_time;
-	u8 ctxt_id;*/
-
 };
 
 struct tcp_ack_msg {
@@ -108,4 +90,29 @@ int filter_send_tcp_ack(struct rwnx_hw *priv, struct msg_buf *msgbuf,unsigned ch
 void filter_rx_tcp_ack(struct rwnx_hw *priv,unsigned char *buf, unsigned plen);
 
 void move_tcpack_msg(struct rwnx_hw *priv, struct msg_buf * msg);
+void intf_tcp_drop_msg(struct rwnx_hw *priv,  struct msg_buf *msg);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
+void tcp_ack_timeout(unsigned long data);
+#else
+void tcp_ack_timeout(struct timer_list *t);
+#endif
+int tcp_check_quick_ack(unsigned char *buf, struct tcp_ack_msg *msg);
+int tcp_check_ack(unsigned char *buf,
+				struct tcp_ack_msg *msg,
+				unsigned short *win_scale);
+int tcp_ack_match(struct tcp_ack_manage *ack_m, struct tcp_ack_msg *ack_msg);
+void tcp_ack_update(struct tcp_ack_manage *ack_m);
+int tcp_ack_alloc_index(struct tcp_ack_manage *ack_m);
+int tcp_ack_handle(struct msg_buf *new_msgbuf,
+			  struct tcp_ack_manage *ack_m,
+			  struct tcp_ack_info *ack_info,
+			  struct tcp_ack_msg *ack_msg,
+			  int type);
+int tcp_ack_handle_new(struct msg_buf *new_msgbuf,
+			  struct tcp_ack_manage *ack_m,
+			  struct tcp_ack_info *ack_info,
+			  struct tcp_ack_msg *ack_msg,
+			  int type);
+
+
 #endif

@@ -15,12 +15,12 @@
 
 &mdio1 {
 	switch0: switch0@29 {
-		compatible = "realtek,rtl8367rb", "realtek,rtl8365mb";
+		compatible = "realtek,rtl8365mb";
 		#address-cells = <1>;
 		#size-cells = <0>;
-		reg = <29 0>;
-		dsa,member = <1 0>;
-		reset = <&gpio4 RK_PC2 GPIO_ACTIVE_LOW>;
+		reg = <29>;
+		dsa,member = <0 0>;
+		reset-gpios = <&gpio4 RK_PC2 GPIO_ACTIVE_LOW>;
 
 		ports {
 			#address-cells = <1>;
@@ -28,29 +28,33 @@
 
 			port@0 {
 				reg = <0>;
-				label = "lan3";
-				local-mac-address = [00 48 54 20 00 03];
+				label = "wan";
+				nvmem-cells = <&mac_wan>;
+				nvmem-cell-names = "mac-address";
 				phy-handle = <&phy0>;
 			};
 
 			port@1 {
 				reg = <1>;
-				label = "lan2";
-				local-mac-address = [00 48 54 20 00 02];
+				label = "lan1";
+				nvmem-cells = <&mac_lan1>;
+				nvmem-cell-names = "mac-address";
 				phy-handle = <&phy1>;
 			};
 
 			port@2 {
 				reg = <2>;
-				label = "lan1";
-				local-mac-address = [00 48 54 20 00 01];
+				label = "lan2";
+				nvmem-cells = <&mac_lan2>;
+				nvmem-cell-names = "mac-address";
 				phy-handle = <&phy2>;
 			};
 
 			port@3 {
 				reg = <3>;
-				label = "wan";
-				local-mac-address = [00 48 54 20 00 00];
+				label = "lan3";
+				nvmem-cells = <&mac_lan3>;
+				nvmem-cell-names = "mac-address";
 				phy-handle = <&phy3>;
 			};
 

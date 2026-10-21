@@ -2245,7 +2245,6 @@ static void __sc635hai_power_off(struct sc635hai *sc635hai)
 
 	if (!IS_ERR(sc635hai->pwdn_gpio))
 		gpiod_set_value_cansleep(sc635hai->pwdn_gpio, 0);
-	clk_disable_unprepare(sc635hai->xvclk);
 	if (!IS_ERR(sc635hai->reset_gpio))
 		gpiod_set_value_cansleep(sc635hai->reset_gpio, 0);
 	if (!IS_ERR_OR_NULL(sc635hai->pins_sleep)) {
@@ -2754,8 +2753,10 @@ static int sc635hai_read_module_info(struct sc635hai *sc635hai)
 				       &sc635hai->module_name);
 	ret |= of_property_read_string(node, RKMODULE_CAMERA_LENS_NAME,
 				       &sc635hai->len_name);
-	if (ret)
+	if (ret) {
 		dev_err(dev, "could not get module information!\n");
+		return ret;
+	}
 
 	/* Compatible with non-standby mode if this attribute is not configured in dts*/
 	of_property_read_u32(node, RKMODULE_CAMERA_STANDBY_HW,
@@ -2767,6 +2768,7 @@ static int sc635hai_read_module_info(struct sc635hai *sc635hai)
 	if (ret) {
 		sc635hai->sync_mode = NO_SYNC_MODE;
 		dev_err(dev, "could not get sync mode!\n");
+		ret = 0;
 	} else {
 		if (strcmp(sync_mode_name, RKMODULE_EXTERNAL_MASTER_MODE) == 0) {
 			sc635hai->sync_mode = EXTERNAL_MASTER_MODE;

@@ -31,7 +31,7 @@ struct aicbsp_feature_t {
 	uint8_t  irqf;
 };
 
-#ifdef CONFIG_DPD
+#if defined(CONFIG_DPD) || defined(CONFIG_LOFT_CALIB)
 typedef struct {
     uint32_t bit_mask[3];
     uint32_t reserved;
@@ -53,13 +53,22 @@ typedef struct {
 
 #define MEMBER_SIZE(type, member)   sizeof(((type *)0)->member)
 #define DPD_RESULT_SIZE_8800DC      sizeof(rf_misc_ram_lite_t)
+#endif
 
+#ifdef CONFIG_DPD
 extern rf_misc_ram_lite_t aicwf_sdio_dpd_res;
+#endif
+
+#ifdef CONFIG_LOFT_CALIB
+extern rf_misc_ram_lite_t aicwf_sdio_loft_res_local;
 #endif
 
 int aicwf_sdio_aicbsp_set_subsys(int, int);
 int aicwf_sdio_aicbsp_get_feature(struct aicbsp_feature_t *feature, char *fw_path);
-struct sk_buff *aicbsp_resv_mem_alloc_skb(unsigned int length, uint32_t id);
-void aicbsp_resv_mem_kfree_skb(struct sk_buff *skb, uint32_t id);
+struct sk_buff *aicwf_sdio_aicbsp_resv_mem_alloc_skb(unsigned int length, uint32_t id);
+void aicwf_sdio_aicbsp_resv_mem_kfree_skb(struct sk_buff *skb, uint32_t id);
+
+/* true once the combo BT firmware has been loaded over SDIO */
+bool aicbsp_is_bt_fw_ready(void);
 
 #endif

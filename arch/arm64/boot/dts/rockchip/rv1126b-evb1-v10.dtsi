@@ -85,6 +85,7 @@
 		regulator-name = "vccio_sd";
 		regulator-min-microvolt = <1800000>;
 		regulator-max-microvolt = <3300000>;
+		regulator-init-microvolt = <3300000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&sdmmc_volt>;
 		gpios = <&gpio0 RK_PA6 GPIO_ACTIVE_HIGH>;
@@ -100,6 +101,7 @@
 		regulator-init-microvolt = <950000>;
 		regulator-min-microvolt = <750000>;
 		regulator-max-microvolt = <1100000>;
+		regulator-settling-time-up-us = <250>;
 		regulator-always-on;
 		regulator-boot-on;
 		enable-gpios = <&gpio0 RK_PA3 GPIO_ACTIVE_HIGH>;
@@ -113,7 +115,7 @@
 		pinctrl-0 = <&uart2m0_rtsn_pins>;
 		pinctrl-1 = <&uart2_gpios>;
 		BT,power_gpio = <&gpio0 RK_PA0 GPIO_ACTIVE_HIGH>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	wireless-wlan {
@@ -323,7 +325,6 @@
 		reg = <0x14>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&touch_gpio>;
-		power-supply = <&vcc_mipi>;
 		goodix,rst-gpio = <&gpio7 RK_PA7 GPIO_ACTIVE_HIGH>;
 		goodix,irq-gpio = <&gpio7 RK_PA6 IRQ_TYPE_LEVEL_LOW>;
 	};
@@ -331,7 +332,6 @@
 	hynitron: hynitron@5a {
 		compatible = "hyn,3240";
 		reg = <0x5a>;
-		power-supply = <&vcc_mipi>;
 
 		pinctrl-names = "ts_active","ts_suspend";
 		pinctrl-0 = <&ts_int_active &ts_reset_active>;
@@ -352,11 +352,15 @@
 	rmii_phy: ethernet-phy@2 {
 		compatible = "ethernet-phy-id0680.8101", "ethernet-phy-ieee802.3-c22";
 		reg = <2>;
-		clocks = <&cru CLK_MACPHY>;
+		rockchip,macphy = <&macphy>;
+		clocks = <&cru CLK_MACPHY>, <&cru PCLK_MACPHY>;
+		clock-names = "clk", "pclk";
 		clock-frequency = <24000000>;
 		resets = <&cru SRST_RESETN_MACPHY>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&fephym1_pins>;
+		nvmem-cells = <&macphy_txamp>, <&macphy_adc_offset>;
+		nvmem-cell-names = "txamp", "adc_offset";
 		phy-is-integrated;
 	};
 };
@@ -485,6 +489,10 @@
 	status = "okay";
 };
 
+&rtc {
+	status = "okay";
+};
+
 &sai2 {
 	status = "okay";
 	/delete-property/ pinctrl-names;
@@ -519,6 +527,7 @@
 	pinctrl-0 = <&sdmmc1_clk_pins &sdmmc1_cmd_pins &sdmmc1_bus4_pins>;
 	keep-power-in-suspend;
 	non-removable;
+	no-low-pwr;
 	mmc-pwrseq = <&sdio_pwrseq>;
 	//sd-uhs-sdr104;
 	status = "okay";
@@ -527,7 +536,15 @@
 &uart2 {
 	status = "okay";
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart2m0_xfer_pins &uart2m0_ctsn_pins>;
+	pinctrl-0 = <&uart2m0_xfer_pins &uart2m0_ctsn_pins &uart2m0_rtsn_pins>;
+	uart-has-rtscts;
+
+	bluetooth {
+		compatible = "rockchip,rk960-bt";
+		max-speed = <1500000>;
+		reset-gpios = <&gpio0 RK_PA0 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
 };
 
 &usb2phy_host {

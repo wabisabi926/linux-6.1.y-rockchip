@@ -16,39 +16,43 @@
 
 /* USB Device ID */
 #define USB_VENDOR_ID_AIC                0xA69C
-#define USB_VENDOR_ID_TP                 0x2357
-#define USB_VENDOR_ID_TENDA              0x2604
-#define USB_VENDOR_ID_AIC_USB            0x368b
-
-#define USB_PRODUCT_ID_TP               0x014e
-#define USB_PRODUCT_ID_MERCURY          0x014b
-#define USB_PRODUCT_ID_FAST             0x014f
-
-#define USB_PRODUCT_ID_TENDA            0x001f
+#define USB_VENDOR_ID_AIC_V2             0x368B
 
 #ifndef CONFIG_USB_BT
-#define USB_PRODUCT_ID_AIC8800			0x8800
-#define USB_PRODUCT_ID_AIC8801			0x8801
-#define USB_PRODUCT_ID_AIC8800DC		0x88dc
-#define USB_PRODUCT_ID_AIC8800DW		0x88dd
-#define USB_PRODUCT_ID_AIC8800D81		0x8d81
+#define USB_PRODUCT_ID_AIC8800          0x8800
+#define USB_PRODUCT_ID_AIC8801          0x8801
+#define USB_PRODUCT_ID_AIC8800DC        0x88dc
+#define USB_PRODUCT_ID_AIC8800DW        0x88dd
+#define USB_PRODUCT_ID_AIC8800D81       0x8d81
+#define USB_PRODUCT_ID_AIC8800D81X2     0x8d91
+#define USB_PRODUCT_ID_AIC8800D89X2     0x8d99
 #else
-#define USB_PRODUCT_ID_AIC8801			0x8801
-#define USB_PRODUCT_ID_AIC8800DC		0x88dc
-#define USB_PRODUCT_ID_AIC8800DW		0x88dd
-#define USB_PRODUCT_ID_AIC8800D81		0x8d81
-#define USB_PRODUCT_ID_AIC8800D41		0x8d41
-#define USB_PRODUCT_ID_AIC8800D83       0x8d83
-#define USB_PRODUCT_ID_AIC8800D84		0x8d84
-#define USB_PRODUCT_ID_AIC8800D85		0x8d85
-
+#define USB_PRODUCT_ID_AIC8801          0x8801
+#define USB_PRODUCT_ID_AIC8800DC        0x88dc
+#define USB_PRODUCT_ID_AIC8800DW        0x88dd
+#define USB_PRODUCT_ID_AIC8800D81       0x8d81
+#define USB_PRODUCT_ID_AIC8800D41       0x8d41
+#define USB_PRODUCT_ID_AIC8800D81X2     0x8d91
+#define USB_PRODUCT_ID_AIC8800D89X2     0x8d99
+#define USB_PRODUCT_ID_AIC8800D80N      0x8d45
+#define USB_PRODUCT_ID_AIC8800D80LN     0x8d46
+#define USB_PRODUCT_ID_AIC8800D80WN     0x8d47
+#define USB_PRODUCT_ID_AIC8800D40N      0x8d48
+#define USB_PRODUCT_ID_AIC8800D40LN     0x8d49
+#define USB_PRODUCT_ID_AIC8800D40WN     0x8d4a
+#define USB_PRODUCT_ID_AIC8800DWN       0x8870
+#define USB_PRODUCT_ID_AIC8800DLN       0x8871
 #endif
 
 enum AICWF_IC{
 	PRODUCT_ID_AIC8801	=	0,
 	PRODUCT_ID_AIC8800DC,
 	PRODUCT_ID_AIC8800DW,
-	PRODUCT_ID_AIC8800D81
+	PRODUCT_ID_AIC8800DLN,
+	PRODUCT_ID_AIC8800D80N,
+	PRODUCT_ID_AIC8800D81,
+	PRODUCT_ID_AIC8800D81X2,
+	PRODUCT_ID_AIC8800D89X2
 };
 
 
@@ -60,7 +64,7 @@ enum AICWF_IC{
 #define TXQLEN                          (2048*4)
 #define AICWF_USB_TX_URBS               (50)
 #else
-#define AICWF_USB_TX_URBS               50//(100)
+#define AICWF_USB_TX_URBS               200//(100)
 #endif
 #define AICWF_USB_TX_LOW_WATER         (AICWF_USB_TX_URBS/4)//25%
 #define AICWF_USB_TX_HIGH_WATER        (AICWF_USB_TX_LOW_WATER*3)//75%
@@ -71,6 +75,7 @@ enum AICWF_IC{
 #endif
 #define AICWF_USB_MSG_MAX_PKT_SIZE      (2048)
 #define AICWF_USB_MAX_PKT_SIZE          (2048)
+#define AICWF_USB_MAX_AMSDU_PKT_SIZE    (2048*6)
 #define AICWF_USB_FC_PERSTA_HIGH_WATER		64
 #define AICWF_USB_FC_PERSTA_LOW_WATER		16
 
@@ -193,7 +198,9 @@ int usb_msg_busrx_thread(void *data);
 #endif
 int usb_bustx_thread(void *data);
 int usb_busrx_thread(void *data);
-
+void rwnx_stop_sta_all_queues(void *sta, struct rwnx_hw *rwnx_hw);
+void rwnx_wake_sta_all_queues(void *sta, struct rwnx_hw *rwnx_hw);
+void aicwf_usb_cancel_all_urbs(struct aic_usb_dev *usb_dev);
 
 extern void aicwf_hostif_ready(void);
 

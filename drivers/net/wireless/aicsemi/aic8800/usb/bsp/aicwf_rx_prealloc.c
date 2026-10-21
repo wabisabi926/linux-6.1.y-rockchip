@@ -25,8 +25,9 @@ int aicwf_usb_rxbuff_size_get(void)
 {
     return aic_rxbuff_size;
 }
+EXPORT_SYMBOL(aicwf_usb_rxbuff_size_get);
 
-struct rx_buff *aicwf_usb_prealloc_rxbuff_alloc(spinlock_t *lock) 
+struct rx_buff *aicwf_usb_prealloc_rxbuff_alloc(spinlock_t *lock)
 {
     unsigned long flags;
     struct rx_buff *rxbuff = NULL;
@@ -60,6 +61,7 @@ struct rx_buff *aicwf_usb_prealloc_rxbuff_alloc(spinlock_t *lock)
 
     return rxbuff;
 }
+EXPORT_SYMBOL(aicwf_usb_prealloc_rxbuff_alloc);
 
 void aicwf_usb_prealloc_rxbuff_free(struct rx_buff *rxbuff, spinlock_t *lock)
 {
@@ -71,6 +73,7 @@ void aicwf_usb_prealloc_rxbuff_free(struct rx_buff *rxbuff, spinlock_t *lock)
     rx_buff_list_ava = atomic_read(&aic_rx_buff_list.rxbuff_list_len);
     spin_unlock_irqrestore(lock, flags);
 }
+EXPORT_SYMBOL(aicwf_usb_prealloc_rxbuff_free);
 
 int aicwf_prealloc_init(void)
 {
@@ -117,10 +120,6 @@ void aicwf_prealloc_exit(void)
         kfree(rxbuff);
     }
 }
-
-EXPORT_SYMBOL(aicwf_usb_rxbuff_size_get);
-EXPORT_SYMBOL(aicwf_usb_prealloc_rxbuff_alloc);
-EXPORT_SYMBOL(aicwf_usb_prealloc_rxbuff_free);
 
 #endif
 

@@ -585,6 +585,10 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
 
 	rk628_post_process_setup(sd);
 
+	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+			SW_OUTPUT_MODE_MASK,
+			SW_OUTPUT_MODE(OUTPUT_MODE_BT1120));
+
 	rk628_i2c_update_bits(bt1120->rk628, GRF_POST_PROC_CON,
 			   SW_DCLK_OUT_INV_EN, SW_DCLK_OUT_INV_EN);
 
@@ -621,6 +625,15 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
 		schedule_delayed_work(&bt1120->delayed_work_enable_hotplug, HZ / 20);
 }
 
+static void disable_bt1120tx(struct v4l2_subdev *sd)
+{
+	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+
+	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+			SW_OUTPUT_MODE_MASK,
+			SW_OUTPUT_MODE(0));
+}
+
 static void enable_stream(struct v4l2_subdev *sd, bool en)
 {
 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
@@ -630,22 +643,22 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
 	if (en) {
 		if (bt1120->rk628->version >= RK628F_VERSION) {
 			rk628_i2c_read(bt1120->rk628, HDMI_RX_SCDC_REGS2, &val);
-			if (rk628_hdmirx_scdc_ced_err(bt1120->rk628) ||
-			    !rk628_hdmirx_is_locked(bt1120->rk628)) {
+			if (rk628_hdmirx_scdc_ced_err(bt1120->rk628) == CED_FULL) {
 				rk628_hdmirx_plugout(sd);
 				schedule_delayed_work(&bt1120->delayed_work_enable_hotplug,
 						      msecs_to_jiffies(800));
 				return;
 			}
 		}
-		rk628_hdmirx_vid_enable(sd, true);
 		enable_bt1120tx(sd);
+		rk628_hdmirx_vid_enable(sd, true);
 
 		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_PDEC_CTRL,
 				      GCPFORCE_CLRAVMUTE_MASK, GCPFORCE_CLRAVMUTE(1));
 		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_PDEC_CTRL,
 				      GCPFORCE_CLRAVMUTE_MASK, GCPFORCE_CLRAVMUTE(0));
 	} else {
+		disable_bt1120tx(sd);
 		rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON0, SCL_EN(0));
 		rk628_hdmirx_vid_enable(sd, false);
 	}
@@ -1094,10 +1107,8 @@ static int rk628_hdmirx_general_isr(struct v4l2_subdev *sd, u32 status, bool *ha
 			 __func__, hact, vact);
 
 		rk628_bt1120_enable_interrupts(sd, false);
-		if (bt1120->rk628->version < RK628F_VERSION) {
-			enable_stream(sd, false);
-			bt1120->nosignal = true;
-		}
+		enable_stream(sd, false);
+		bt1120->nosignal = true;
 		schedule_delayed_work(&bt1120->delayed_work_res_change, HZ / 2);
 
 		v4l2_dbg(1, debug, sd, "%s: hact/vact change, md_ints: %#x\n",
@@ -1827,6 +1838,7 @@ static int rk628_bt1120_resume(struct device *dev)
 
 	rk628_bt1120_power_on(bt1120);
 	rk628_cru_initialize(bt1120->rk628);
+	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
 	rk628_bt1120_initial(sd);
 	rk628_hdmirx_plugout(sd);
 	enable_irq(bt1120->plugin_irq);

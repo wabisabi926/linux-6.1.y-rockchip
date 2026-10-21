@@ -11,179 +11,6 @@
 #include "rga_job.h"
 #include "rga_debugger.h"
 
-int rga_buf_size_cal(unsigned long yrgb_addr, unsigned long uv_addr,
-		      unsigned long v_addr, int format, uint32_t w,
-		      uint32_t h, unsigned long *StartAddr, unsigned long *size)
-{
-	uint32_t size_yrgb = 0;
-	uint32_t size_uv = 0;
-	uint32_t size_v = 0;
-	uint32_t stride = 0;
-	unsigned long start, end;
-	uint32_t pageCount;
-
-	switch (format) {
-	case RGA_FORMAT_RGBA_8888:
-	case RGA_FORMAT_RGBX_8888:
-	case RGA_FORMAT_BGRA_8888:
-	case RGA_FORMAT_BGRX_8888:
-	case RGA_FORMAT_ARGB_8888:
-	case RGA_FORMAT_XRGB_8888:
-	case RGA_FORMAT_ABGR_8888:
-	case RGA_FORMAT_XBGR_8888:
-		stride = (w * 4 + 3) & (~3);
-		size_yrgb = stride * h;
-		start = yrgb_addr >> PAGE_SHIFT;
-		end = yrgb_addr + size_yrgb;
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_RGB_888:
-	case RGA_FORMAT_BGR_888:
-		stride = (w * 3 + 3) & (~3);
-		size_yrgb = stride * h;
-		start = yrgb_addr >> PAGE_SHIFT;
-		end = yrgb_addr + size_yrgb;
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_RGB_565:
-	case RGA_FORMAT_RGBA_5551:
-	case RGA_FORMAT_RGBA_4444:
-	case RGA_FORMAT_BGR_565:
-	case RGA_FORMAT_BGRA_5551:
-	case RGA_FORMAT_BGRA_4444:
-	case RGA_FORMAT_ARGB_5551:
-	case RGA_FORMAT_ARGB_4444:
-	case RGA_FORMAT_ABGR_5551:
-	case RGA_FORMAT_ABGR_4444:
-		stride = (w * 2 + 3) & (~3);
-		size_yrgb = stride * h;
-		start = yrgb_addr >> PAGE_SHIFT;
-		end = yrgb_addr + size_yrgb;
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-
-		/* YUV FORMAT */
-	case RGA_FORMAT_YCbCr_422_SP:
-	case RGA_FORMAT_YCrCb_422_SP:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = stride * h;
-		start = min(yrgb_addr, uv_addr);
-		start >>= PAGE_SHIFT;
-		end = max((yrgb_addr + size_yrgb), (uv_addr + size_uv));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YCbCr_422_P:
-	case RGA_FORMAT_YCrCb_422_P:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = ((stride >> 1) * h);
-		size_v = ((stride >> 1) * h);
-		start = min3(yrgb_addr, uv_addr, v_addr);
-		start = start >> PAGE_SHIFT;
-		end =
-			max3((yrgb_addr + size_yrgb), (uv_addr + size_uv),
-			(v_addr + size_v));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YCbCr_420_SP:
-	case RGA_FORMAT_YCrCb_420_SP:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = (stride * (h >> 1));
-		start = min(yrgb_addr, uv_addr);
-		start >>= PAGE_SHIFT;
-		end = max((yrgb_addr + size_yrgb), (uv_addr + size_uv));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YCbCr_420_P:
-	case RGA_FORMAT_YCrCb_420_P:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = ((stride >> 1) * (h >> 1));
-		size_v = ((stride >> 1) * (h >> 1));
-		start = min3(yrgb_addr, uv_addr, v_addr);
-		start >>= PAGE_SHIFT;
-		end =
-			max3((yrgb_addr + size_yrgb), (uv_addr + size_uv),
-			(v_addr + size_v));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YCbCr_400:
-	case RGA_FORMAT_Y8:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		start = yrgb_addr >> PAGE_SHIFT;
-		end = yrgb_addr + size_yrgb;
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_Y4:
-		stride = ((w + 3) & (~3)) >> 1;
-		size_yrgb = stride * h;
-		start = yrgb_addr >> PAGE_SHIFT;
-		end = yrgb_addr + size_yrgb;
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YVYU_422:
-	case RGA_FORMAT_VYUY_422:
-	case RGA_FORMAT_YUYV_422:
-	case RGA_FORMAT_UYVY_422:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = stride * h;
-		start = min(yrgb_addr, uv_addr);
-		start >>= PAGE_SHIFT;
-		end = max((yrgb_addr + size_yrgb), (uv_addr + size_uv));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YVYU_420:
-	case RGA_FORMAT_VYUY_420:
-	case RGA_FORMAT_YUYV_420:
-	case RGA_FORMAT_UYVY_420:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = (stride * (h >> 1));
-		start = min(yrgb_addr, uv_addr);
-		start >>= PAGE_SHIFT;
-		end = max((yrgb_addr + size_yrgb), (uv_addr + size_uv));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	case RGA_FORMAT_YCbCr_420_SP_10B:
-	case RGA_FORMAT_YCrCb_420_SP_10B:
-		stride = (w + 3) & (~3);
-		size_yrgb = stride * h;
-		size_uv = (stride * (h >> 1));
-		start = min(yrgb_addr, uv_addr);
-		start >>= PAGE_SHIFT;
-		end = max((yrgb_addr + size_yrgb), (uv_addr + size_uv));
-		end = (end + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-		pageCount = end - start;
-		break;
-	default:
-		pageCount = 0;
-		start = 0;
-		break;
-	}
-
-	*StartAddr = start;
-
-	if (size != NULL)
-		*size = size_yrgb + size_uv + size_v;
-
-	return pageCount;
-}
-
 int rga_virtual_memory_check(void *vaddr, u32 w, u32 h, u32 format, int fd)
 {
 	int bits = 32;
@@ -228,7 +55,10 @@ int rga_dma_memory_check(struct rga_dma_buffer *rga_dma_buffer, struct rga_img_i
 	dma_buf = rga_dma_buffer->dma_buf;
 
 	if (!IS_ERR_OR_NULL(dma_buf)) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+		ret = dma_buf_vmap_unlocked(dma_buf, &map);
+		vaddr = ret ? NULL : map.vaddr;
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 		ret = dma_buf_vmap(dma_buf, &map);
 		vaddr = ret ? NULL : map.vaddr;
 #else
@@ -241,7 +71,9 @@ int rga_dma_memory_check(struct rga_dma_buffer *rga_dma_buffer, struct rga_img_i
 			rga_err("can't vmap the dma buffer!\n");
 			return -EINVAL;
 		}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+		dma_buf_vunmap_unlocked(dma_buf, &map);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 		dma_buf_vunmap(dma_buf, &map);
 #else
 		dma_buf_vunmap(dma_buf, vaddr);
@@ -261,6 +93,11 @@ int rga_dma_map_sgt(struct sg_table *sgt, struct rga_dma_buffer *buffer,
 	if (ret <= 0) {
 		rga_err("dma_map_sg failed! ret = %d\n", ret);
 		return ret < 0 ? ret : -EINVAL;
+	} else if (ret > 1) {
+		rga_err("dma_map_sg mapped more than one segment! orig_nents = %d, nents = %d\n",
+			sgt->orig_nents, ret);
+		dma_unmap_sg(map_dev, sgt->sgl, sgt->orig_nents, dir);
+		return -EINVAL;
 	}
 	sgt->nents = ret;
 
@@ -308,7 +145,11 @@ int rga_dma_map_buf(struct dma_buf *dma_buf, struct rga_dma_buffer *rga_dma_buff
 		goto err_get_attach;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+	sgt = dma_buf_map_attachment_unlocked(attach, dir);
+#else
 	sgt = dma_buf_map_attachment(attach, dir);
+#endif
 	if (IS_ERR(sgt)) {
 		ret = PTR_ERR(sgt);
 		rga_err("Failed to map attachment, ret[%d]\n", ret);
@@ -360,7 +201,11 @@ int rga_dma_map_fd(int fd, struct rga_dma_buffer *rga_dma_buffer,
 		goto err_get_attach;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+	sgt = dma_buf_map_attachment_unlocked(attach, dir);
+#else
 	sgt = dma_buf_map_attachment(attach, dir);
+#endif
 	if (IS_ERR(sgt)) {
 		ret = PTR_ERR(sgt);
 		rga_err("Failed to map attachment, ret[%d]\n", ret);
@@ -392,9 +237,15 @@ err_get_attach:
 void rga_dma_unmap_buf(struct rga_dma_buffer *rga_dma_buffer)
 {
 	if (rga_dma_buffer->attach && rga_dma_buffer->sgt)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+		dma_buf_unmap_attachment_unlocked(rga_dma_buffer->attach,
+						  rga_dma_buffer->sgt,
+						  rga_dma_buffer->dir);
+#else
 		dma_buf_unmap_attachment(rga_dma_buffer->attach,
 					 rga_dma_buffer->sgt,
 					 rga_dma_buffer->dir);
+#endif
 
 	if (rga_dma_buffer->attach) {
 		dma_buf_detach(rga_dma_buffer->dma_buf, rga_dma_buffer->attach);

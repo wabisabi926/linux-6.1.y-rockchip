@@ -749,6 +749,8 @@ static int csi2_dphy_get_set_fmt(struct v4l2_subdev *sd,
 	sensor = sd_to_sensor(dphy, sensor_sd);
 	if (!sensor)
 		return -ENODEV;
+	fmt->pad = 0;
+	fmt->which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ret = v4l2_subdev_call(sensor_sd, pad, get_fmt, NULL, fmt);
 	if (!ret && fmt->pad == 0 && fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
 		sensor->format = fmt->format;
@@ -1033,6 +1035,7 @@ static int rockchip_csi2dphy_media_init(struct csi2_dphy *dphy)
 		v4l2_async_nf_cleanup(&dphy->notifier);
 		return ret;
 	}
+	dphy->clk_phase = 0;
 
 	return v4l2_async_register_subdev(&dphy->sd);
 }
@@ -1183,6 +1186,59 @@ static int rockchip_csi2_dphy_get_hw(struct csi2_dphy *dphy)
 	return ret;
 }
 
+#define USED_SYS_DEBUG
+#ifdef USED_SYS_DEBUG
+static ssize_t set_clk_phase(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf,
+	size_t count)
+{
+	struct v4l2_subdev *sd = dev_get_drvdata(dev);
+	struct csi2_dphy *csi2dphy = to_csi2_dphy(sd);
+	int status = 0;
+	int ret = 0;
+
+	ret = kstrtoint(buf, 0, &status);
+	if (!ret) {
+		if (status >= 0 && status <= 7)
+			csi2dphy->clk_phase = status;
+		else
+			dev_err(dev, "clk_phase %d, is out of range(0~7)\n", status);
+	} else {
+		dev_err(dev, "set clk_phase %d failed\n", status);
+	}
+	return count;
+}
+
+static struct device_attribute attributes[] = {
+	__ATTR(clk_phase, 0200, NULL, set_clk_phase),
+};
+
+static int add_sysfs_interfaces(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(attributes); i++)
+		if (device_create_file(dev, attributes + i))
+			goto undo;
+	return 0;
+undo:
+	for (i--; i >= 0 ; i--)
+		device_remove_file(dev, attributes + i);
+	dev_err(dev, "%s: failed to create sysfs interface\n", __func__);
+	return -ENODEV;
+}
+
+static void remove_sysfs_interfaces(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(attributes); i++)
+		device_remove_file(dev, attributes + i);
+	dev_err(dev, "%s: remove sysfs interface\n", __func__);
+}
+#endif
+
 static int rockchip_csi2_dphy_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1231,6 +1287,9 @@ static int rockchip_csi2_dphy_probe(struct platform_device *pdev)
 		goto detach_hw;
 
 	pm_runtime_enable(&pdev->dev);
+#ifdef USED_SYS_DEBUG
+	add_sysfs_interfaces(dev);
+#endif
 
 	dev_info(dev, "csi2 dphy%d probe successfully!\n", csi2dphy->phy_index);
 
@@ -1248,6 +1307,9 @@ static int rockchip_csi2_dphy_remove(struct platform_device *pdev)
 	struct csi2_dphy *dphy = to_csi2_dphy(sd);
 	int i = 0;
 
+#ifdef USED_SYS_DEBUG
+	remove_sysfs_interfaces(&pdev->dev);
+#endif
 	for (i = 0; i < dphy->csi_info.csi_num; i++)
 		rockchip_csi2_dphy_detach_hw(dphy, dphy->csi_info.csi_idx[i], i);
 	media_entity_cleanup(&sd->entity);

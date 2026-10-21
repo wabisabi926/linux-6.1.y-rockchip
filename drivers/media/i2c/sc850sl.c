@@ -9,6 +9,7 @@
  * V0.0X01.0X03 support thunder boot
  * V0.0X01.0X04 support sleep/wake up
  * V0.0X01.0X05 unified standby hw mode
+ * V0.0X01.0X06 add HDRX2 mode and 1920x1080 60fps config
  *
  */
 
@@ -34,17 +35,19 @@
 #include "../platform/rockchip/isp/rkisp_tb_helper.h"
 #include "cam-sleep-wakeup.h"
 
-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x05)
+#define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x06)
 
 #ifndef V4L2_CID_DIGITAL_GAIN
 #define V4L2_CID_DIGITAL_GAIN		V4L2_CID_GAIN
 #endif
 
+#define MIPI_FREQ_270M			270000000
+#define MIPI_FREQ_486M			486000000
 #define MIPI_FREQ_540M			540000000
-#define MIPI_FREQ_972M			486000000
-#define SC850AI_MAX_LINK_FREQ   MIPI_FREQ_540M
+#define MIPI_FREQ_729M			729000000
+#define SC850AI_MAX_LINK_FREQ		MIPI_FREQ_729M
 
-#define SC850SL_MAX_PIXEL_RATE	(SC850AI_MAX_LINK_FREQ / 10 * 2 * SC850SL_4LANES)
+#define SC850SL_MAX_PIXEL_RATE		(SC850AI_MAX_LINK_FREQ / 10 * 2 * SC850SL_4LANES)
 #define OF_CAMERA_HDR_MODE		"rockchip,camera-hdr-mode"
 
 #define SC850SL_XVCLK_FREQ_24M		24000000
@@ -87,6 +90,8 @@
 #define SC850SL_SF_REG_AGAIN		0x3e12
 #define SC850SL_SF_REG_AGAIN_FINE	0x3e13
 #define SC850SL_SF_REG_DGAIN		0x3e10
+
+#define SC850SL_REG_SE_START_POINT	0x3e23
 
 #define SC850SL_GAIN_MIN		0x40	//1.000 = 64 * 1/64
 #define SC850SL_GAIN_MAX		(8 * 50 * 64)   /*need_view   8*50*64=25600  */
@@ -599,6 +604,424 @@ static __maybe_unused const struct regval sc850sl_linear10bit_3840x2160_40fps_re
 	{REG_NULL, 0x00},
 };
 
+//Cleaned_0x9e_SC850SL_MIPI_24Minput_1c4d_540Mbps_10bit_1920x1080_60fps_4lane_hsub_vbin_one_expo.ini
+static __maybe_unused const struct regval sc850sl_linear10bit_1920x1080_60fps_regs[] = {
+	{0x0103, 0x01},
+	{0x0100, 0x00},
+	{0x36e9, 0x80},
+	{0x36f9, 0x80},
+	{0x36ea, 0x09},
+	{0x36eb, 0x0c},
+	{0x36ec, 0x5a},
+	{0x36ed, 0x24},
+	{0x36fa, 0x0b},
+	{0x36fb, 0x33},
+	{0x36fc, 0x10},
+	{0x36fd, 0x37},
+	{0x36e9, 0x24},
+	{0x36f9, 0x53},
+	{0x3018, 0x7a},
+	{0x3019, 0xf0},
+	{0x301a, 0x30},
+	{0x301e, 0x3c},
+	{0x301f, 0x9e},
+	{0x302a, 0x00},
+	{0x3031, 0x0a},
+	{0x3032, 0x20},
+	{0x3033, 0x22},
+	{0x3037, 0x00},
+	{0x303e, 0xb4},
+	{0x3208, 0x07},
+	{0x3209, 0x80},
+	{0x320a, 0x04},
+	{0x320b, 0x38},
+	{0x320c, 0x04},
+	{0x320d, 0x4c},
+	{0x320e, 0x04},
+	{0x320f, 0x65},
+	{0x3211, 0x06},
+	{0x3213, 0x02},
+	{0x3215, 0x31},
+	{0x3220, 0x01},
+	{0x3226, 0x00},
+	{0x3227, 0x03},
+	{0x3250, 0x40},
+	{0x3253, 0x08},
+	{0x327e, 0x00},
+	{0x3280, 0x00},
+	{0x3281, 0x00},
+	{0x3301, 0x3c},
+	{0x3304, 0x30},
+	{0x3306, 0xe8},
+	{0x3308, 0x10},
+	{0x3309, 0x70},
+	{0x330a, 0x01},
+	{0x330b, 0xe0},
+	{0x330d, 0x10},
+	{0x3314, 0x92},
+	{0x331e, 0x29},
+	{0x331f, 0x69},
+	{0x3333, 0x10},
+	{0x3347, 0x05},
+	{0x3348, 0xd0},
+	{0x3352, 0x01},
+	{0x3356, 0x38},
+	{0x335d, 0x60},
+	{0x3362, 0x70},
+	{0x338f, 0x80},
+	{0x33af, 0x48},
+	{0x33fe, 0x00},
+	{0x3400, 0x12},
+	{0x3406, 0x04},
+	{0x3410, 0x12},
+	{0x3416, 0x06},
+	{0x3433, 0x01},
+	{0x3440, 0x12},
+	{0x3446, 0x08},
+	{0x3450, 0x55},
+	{0x3451, 0xaa},
+	{0x3452, 0x55},
+	{0x3453, 0xaa},
+	{0x3478, 0x01},
+	{0x3479, 0x01},
+	{0x347a, 0x02},
+	{0x347b, 0x01},
+	{0x347c, 0x04},
+	{0x347d, 0x01},
+	{0x3616, 0x0c},
+	{0x3620, 0x92},
+	{0x3622, 0x74},
+	{0x3629, 0x74},
+	{0x362a, 0xf0},
+	{0x362b, 0x0f},
+	{0x362d, 0x00},
+	{0x3630, 0x68},
+	{0x3633, 0x22},
+	{0x3634, 0x22},
+	{0x3635, 0x20},
+	{0x3637, 0x06},
+	{0x3638, 0x26},
+	{0x363b, 0x06},
+	{0x363c, 0x07},
+	{0x363d, 0x05},
+	{0x363e, 0x8f},
+	{0x3648, 0xe0},
+	{0x3649, 0x0a},
+	{0x364a, 0x06},
+	{0x364c, 0x6a},
+	{0x3650, 0x3d},
+	{0x3654, 0x40},
+	{0x3656, 0x68},
+	{0x3657, 0x0f},
+	{0x3658, 0x3d},
+	{0x365c, 0x40},
+	{0x365e, 0x68},
+	{0x3901, 0x04},
+	{0x3904, 0x20},
+	{0x3905, 0x91},
+	{0x391e, 0x83},
+	{0x3928, 0x04},
+	{0x3933, 0xa0},
+	{0x3934, 0x0a},
+	{0x3935, 0x68},
+	{0x3936, 0x00},
+	{0x3937, 0x20},
+	{0x3938, 0x0a},
+	{0x3946, 0x20},
+	{0x3961, 0x40},
+	{0x3962, 0x40},
+	{0x3963, 0xc8},
+	{0x3964, 0xc8},
+	{0x3965, 0x40},
+	{0x3966, 0x40},
+	{0x3967, 0x00},
+	{0x39cd, 0xc8},
+	{0x39ce, 0xc8},
+	{0x3e00, 0x00},
+	{0x3e01, 0x45},
+	{0x3e02, 0xf0},
+	{0x3e0e, 0x02},
+	{0x3e0f, 0x00},
+	{0x3e1c, 0x0f},
+	{0x3e23, 0x00},
+	{0x3e24, 0x00},
+	{0x3e53, 0x00},
+	{0x3e54, 0x00},
+	{0x3e68, 0x00},
+	{0x3e69, 0x80},
+	{0x3e73, 0x00},
+	{0x3e74, 0x00},
+	{0x3e86, 0x03},
+	{0x3e87, 0x40},
+	{0x3f02, 0x24},
+	{0x4424, 0x02},
+	{0x4501, 0xc4},
+	{0x4509, 0x20},
+	{0x4561, 0x12},
+	{0x4800, 0x24},
+	{0x4837, 0x1d},
+	{0x4900, 0x24},
+	{0x4937, 0x1d},
+	{0x5000, 0x4e},
+	{0x500f, 0x35},
+	{0x5020, 0x00},
+	{0x5787, 0x10},
+	{0x5788, 0x06},
+	{0x5789, 0x00},
+	{0x578a, 0x18},
+	{0x578b, 0x0c},
+	{0x578c, 0x00},
+	{0x5790, 0x10},
+	{0x5791, 0x06},
+	{0x5792, 0x01},
+	{0x5793, 0x18},
+	{0x5794, 0x0c},
+	{0x5795, 0x01},
+	{0x5799, 0x06},
+	{0x57a2, 0x60},
+	{0x5900, 0xf1},
+	{0x5901, 0x04},
+	{0x59e0, 0xfe},
+	{0x59e1, 0x40},
+	{0x59e2, 0x38},
+	{0x59e3, 0x30},
+	{0x59e4, 0x20},
+	{0x59e5, 0x38},
+	{0x59e6, 0x30},
+	{0x59e7, 0x20},
+	{0x59e8, 0x3f},
+	{0x59e9, 0x38},
+	{0x59ea, 0x30},
+	{0x59eb, 0x3f},
+	{0x59ec, 0x38},
+	{0x59ed, 0x30},
+	{0x59ee, 0xfe},
+	{0x59ef, 0x40},
+	{0x59f4, 0x38},
+	{0x59f5, 0x30},
+	{0x59f6, 0x20},
+	{0x59f7, 0x38},
+	{0x59f8, 0x30},
+	{0x59f9, 0x20},
+	{0x59fa, 0x3f},
+	{0x59fb, 0x38},
+	{0x59fc, 0x30},
+	{0x59fd, 0x3f},
+	{0x59fe, 0x38},
+	{0x59ff, 0x30},
+	{REG_NULL, 0x00},
+};
+
+//cleaned_0x0b_SC850SL_MIPI_24Minput_1C4D_1458Mbps_10bit_3840x2160_30fps_SHDR_one_expo.ini
+static __maybe_unused const struct regval sc850sl_linear10bit_3840x2160_30fps_hdr_regs[] = {
+	{0x0103, 0x01},
+	{0x0100, 0x00},
+	{0x36e9, 0x80},
+	{0x36f9, 0x80},
+	{0x36ea, 0x1b},
+	{0x36eb, 0x0c},
+	{0x36ec, 0x4b},
+	{0x36ed, 0x34},
+	{0x36fa, 0x0b},
+	{0x36fb, 0x33},
+	{0x36fc, 0x10},
+	{0x36fd, 0x37},
+	{0x36e9, 0x51},
+	{0x36f9, 0x53},
+	{0x3018, 0x7a},
+	{0x3019, 0xf0},
+	{0x301a, 0x30},
+	{0x301e, 0x3c},
+	{0x301f, 0x0b},
+	{0x3028, 0x77},
+	{0x302a, 0x00},
+	{0x3031, 0x0a},
+	{0x3032, 0x20},
+	{0x3033, 0x22},
+	{0x3037, 0x60},
+	{0x303e, 0xb4},
+	{0x3201, 0x98},
+	{0x3203, 0x0c},
+	{0x3205, 0xa7},
+	{0x3207, 0x83},
+	{0x320c, 0x02},
+	{0x320d, 0x26},
+	{0x320e, 0x11},
+	{0x320f, 0x94},
+	{0x3211, 0x08},
+	{0x3213, 0x2c},
+	{0x3223, 0xd0},
+	{0x3226, 0x10},
+	{0x3227, 0x03},
+	{0x3230, 0x11},
+	{0x3231, 0x93},
+	{0x3250, 0xff},
+	{0x3253, 0x08},
+	{0x327e, 0x55},
+	{0x3280, 0x00},
+	{0x3281, 0x01},
+	{0x3301, 0x24},
+	{0x3304, 0x30},
+	{0x3306, 0x54},
+	{0x3308, 0x10},
+	{0x3309, 0x60},
+	{0x330a, 0x00},
+	{0x330b, 0xa0},
+	{0x330d, 0x10},
+	{0x3314, 0x92},
+	{0x331e, 0x29},
+	{0x331f, 0x59},
+	{0x3333, 0x10},
+	{0x3347, 0x05},
+	{0x3348, 0x50},
+	{0x3352, 0x01},
+	{0x3356, 0x38},
+	{0x335d, 0x60},
+	{0x3362, 0x70},
+	{0x338f, 0x80},
+	{0x33af, 0x48},
+	{0x33fe, 0x02},
+	{0x3400, 0x12},
+	{0x3406, 0x04},
+	{0x3410, 0x12},
+	{0x3416, 0x06},
+	{0x3433, 0x01},
+	{0x3440, 0x12},
+	{0x3446, 0x08},
+	{0x3478, 0x01},
+	{0x3479, 0x01},
+	{0x347a, 0x02},
+	{0x347b, 0x01},
+	{0x347c, 0x02},
+	{0x347d, 0x01},
+	{0x3616, 0x0c},
+	{0x3620, 0x94},
+	{0x3622, 0x74},
+	{0x3629, 0x74},
+	{0x362a, 0xf0},
+	{0x362b, 0x0f},
+	{0x362d, 0x00},
+	{0x3630, 0x68},
+	{0x3633, 0x24},
+	{0x3634, 0x22},
+	{0x3635, 0x20},
+	{0x3637, 0x18},
+	{0x3638, 0x26},
+	{0x363b, 0x06},
+	{0x363c, 0x07},
+	{0x363d, 0x05},
+	{0x363e, 0x8f},
+	{0x3648, 0xe0},
+	{0x3649, 0x0a},
+	{0x364a, 0x06},
+	{0x364c, 0x6a},
+	{0x3650, 0x3d},
+	{0x3654, 0x70},
+	{0x3656, 0x68},
+	{0x3657, 0x0f},
+	{0x3658, 0x3d},
+	{0x365c, 0x40},
+	{0x365e, 0x68},
+	{0x3901, 0x04},
+	{0x3902, 0xf1},
+	{0x3904, 0x20},
+	{0x3905, 0x91},
+	{0x391e, 0x03},
+	{0x3928, 0x04},
+	{0x3933, 0xa0},
+	{0x3934, 0x0a},
+	{0x3935, 0x68},
+	{0x3936, 0x00},
+	{0x3937, 0x20},
+	{0x3938, 0x0a},
+	{0x3946, 0x20},
+	{0x3961, 0x40},
+	{0x3962, 0x40},
+	{0x3963, 0xc8},
+	{0x3964, 0xc8},
+	{0x3965, 0x40},
+	{0x3966, 0x40},
+	{0x3967, 0x00},
+	{0x39cd, 0xc8},
+	{0x39ce, 0xc8},
+	{0x3e00, 0x01},
+	{0x3e01, 0x00},
+	{0x3e02, 0x00},
+	{0x3e04, 0x10},
+	{0x3e05, 0x00},
+	{0x3e0e, 0x02},
+	{0x3e0f, 0x00},
+	{0x3e1c, 0x0f},
+	{0x3e23, 0x01},
+	{0x3e24, 0x0a},
+	{0x3e53, 0x00},
+	{0x3e54, 0x00},
+	{0x3e68, 0x00},
+	{0x3e69, 0x80},
+	{0x3e73, 0x00},
+	{0x3e74, 0x00},
+	{0x3e86, 0x03},
+	{0x3e87, 0x40},
+	{0x3f02, 0x24},
+	{0x4424, 0x02},
+	{0x4501, 0xb4},
+	{0x4503, 0x60},
+	{0x4509, 0x20},
+	{0x4561, 0x12},
+	{0x4800, 0x24},
+	{0x4837, 0x16},
+	{0x4853, 0xf8},
+	{0x4900, 0x24},
+	{0x4937, 0x16},
+	{0x4953, 0xf8},
+	{0x5000, 0x0e},
+	{0x500f, 0x35},
+	{0x5020, 0x00},
+	{0x5787, 0x10},
+	{0x5788, 0x06},
+	{0x5789, 0x00},
+	{0x578a, 0x18},
+	{0x578b, 0x0c},
+	{0x578c, 0x00},
+	{0x5790, 0x10},
+	{0x5791, 0x06},
+	{0x5792, 0x01},
+	{0x5793, 0x18},
+	{0x5794, 0x0c},
+	{0x5795, 0x01},
+	{0x5799, 0x06},
+	{0x57a2, 0x60},
+	{0x59e0, 0xfe},
+	{0x59e1, 0x40},
+	{0x59e2, 0x38},
+	{0x59e3, 0x30},
+	{0x59e4, 0x20},
+	{0x59e5, 0x38},
+	{0x59e6, 0x30},
+	{0x59e7, 0x20},
+	{0x59e8, 0x3f},
+	{0x59e9, 0x38},
+	{0x59ea, 0x30},
+	{0x59eb, 0x3f},
+	{0x59ec, 0x38},
+	{0x59ed, 0x30},
+	{0x59ee, 0xfe},
+	{0x59ef, 0x40},
+	{0x59f4, 0x38},
+	{0x59f5, 0x30},
+	{0x59f6, 0x20},
+	{0x59f7, 0x38},
+	{0x59f8, 0x30},
+	{0x59f9, 0x20},
+	{0x59fa, 0x3f},
+	{0x59fb, 0x38},
+	{0x59fc, 0x30},
+	{0x59fd, 0x3f},
+	{0x59fe, 0x38},
+	{0x59ff, 0x30},
+	{REG_NULL, 0x00},
+};
+
 /*
  * The width and height must be configured to be
  * the same as the current output resolution of the sensor.
@@ -651,6 +1074,47 @@ static const struct sc850sl_mode supported_modes[] = {
 		.bpp = 10,
 		.vc[PAD0] = 0,
 	},
+	{
+		.bus_fmt = MEDIA_BUS_FMT_SBGGR10_1X10,
+		.width = 1920,
+		.height = 1080,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 600000,
+		},
+		.exp_def = 0x080,
+		.hts_def = 0x044c,
+		.vts_def = 0x0465,
+		.bus_fmt = MEDIA_BUS_FMT_SBGGR10_1X10,
+		.reg_list = sc850sl_linear10bit_1920x1080_60fps_regs,
+		.hdr_mode = NO_HDR,
+		.xvclk_freq = 24000000,
+		.mipi_freq_idx = 2,
+		.bpp = 10,
+		.vc[PAD0] = 0,
+	},
+	{
+		.bus_fmt = MEDIA_BUS_FMT_SBGGR10_1X10,
+		.width = 3840,
+		.height = 2160,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
+		.exp_def = 0x080,
+		.hts_def = 0x0226 * 4,
+		.vts_def = 0x01194,
+		.bus_fmt = MEDIA_BUS_FMT_SBGGR10_1X10,
+		.reg_list = sc850sl_linear10bit_3840x2160_30fps_hdr_regs,
+		.hdr_mode = HDR_X2,
+		.xvclk_freq = 24000000,
+		.mipi_freq_idx = 3,
+		.bpp = 10,
+		.vc[PAD0] = 1,
+		.vc[PAD1] = 0,//L->csi wr0
+		.vc[PAD2] = 1,
+		.vc[PAD3] = 1,//M->csi wr2
+	},
 };
 
 static const u32 bus_code[] = {
@@ -667,7 +1131,9 @@ static const char *const sc850sl_test_pattern_menu[] = {
 
 static const s64 link_freq_items[] = {
 	MIPI_FREQ_540M,
-	MIPI_FREQ_972M,
+	MIPI_FREQ_486M,
+	MIPI_FREQ_270M,
+	MIPI_FREQ_729M,
 };
 
 /* Write registers up to 4 at a time */
@@ -764,14 +1230,28 @@ sc850sl_find_best_fit(struct sc850sl *sc850sl, struct v4l2_subdev_format *fmt)
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(supported_modes); i++) {
+		u64 fps_i, fps_b;
+
 		dist = sc850sl_get_reso_dist(&supported_modes[i], framefmt);
 		if (cur_best_fit_dist == -1 || dist < cur_best_fit_dist) {
 			cur_best_fit_dist = dist;
 			cur_best_fit = i;
 		} else if (dist == cur_best_fit_dist &&
 			   framefmt->code == supported_modes[i].bus_fmt) {
-			cur_best_fit = i;
-			break;
+			/*
+			 * Several modes can share the same resolution/code
+			 * (mode[0] 4K@40 vs mode[1] 4K@30). Prefer the
+			 * highest-fps one so a bare 3840x2160 set_fmt lands on
+			 * 40fps(mode[0]) instead of the later 30fps(mode[1]).
+			 * An explicit 30fps request still selects mode[1] via
+			 * s_frame_interval / RKCIS_CMD_SELECT_SETTING.
+			 */
+			fps_i = DIV_ROUND_CLOSEST((u64)supported_modes[i].max_fps.denominator,
+						  supported_modes[i].max_fps.numerator);
+			fps_b = DIV_ROUND_CLOSEST((u64)supported_modes[cur_best_fit].max_fps.denominator,
+						  supported_modes[cur_best_fit].max_fps.numerator);
+			if (fps_i > fps_b)
+				cur_best_fit = i;
 		}
 	}
 	dev_info(&sc850sl->client->dev, "%s: cur_best_fit(%d)",
@@ -820,6 +1300,7 @@ static int sc850sl_set_fmt(struct v4l2_subdev *sd,
 		__v4l2_ctrl_modify_range(sc850sl->vblank, vblank_def,
 					 SC850SL_VTS_MAX - mode->height,
 					 1, vblank_def);
+		__v4l2_ctrl_s_ctrl(sc850sl->vblank, vblank_def);
 		__v4l2_ctrl_s_ctrl(sc850sl->link_freq, mode->mipi_freq_idx);
 		pixel_rate = (u32)link_freq_items[mode->mipi_freq_idx] /
 			     mode->bpp * 2 * SC850SL_4LANES;
@@ -983,6 +1464,7 @@ static int sc850sl_s_frame_interval(struct v4l2_subdev *sd,
 	__v4l2_ctrl_modify_range(sc850sl->vblank, vblank_def,
 				 SC850SL_VTS_MAX - mode->height,
 				 1, vblank_def);
+	__v4l2_ctrl_s_ctrl(sc850sl->vblank, vblank_def);
 	__v4l2_ctrl_s_ctrl(sc850sl->link_freq, mode->mipi_freq_idx);
 	pixel_rate = (u32)link_freq_items[mode->mipi_freq_idx] /
 		     mode->bpp * 2 * SC850SL_4LANES;
@@ -1156,6 +1638,76 @@ static int sc850sl_set_gain_reg(struct sc850sl *sc850sl, u32 gain, int mode)
 	return ret;
 }
 
+static int sc850sl_set_hdrae(struct sc850sl *sc850sl,
+			     struct preisp_hdrae_exp_s *ae)
+{
+	int ret = 0;
+	u32 l_exp_time, m_exp_time, s_exp_time;
+	u32 l_a_gain, m_a_gain, s_a_gain;
+	u32 se_start_point = 0;
+
+	if (!sc850sl->has_init_exp && !sc850sl->streaming) {
+		sc850sl->init_hdrae_exp = *ae;
+		sc850sl->has_init_exp = true;
+		dev_dbg(&sc850sl->client->dev, "sc850sl don't stream, record exp for hdr!\n");
+		return ret;
+	}
+	l_exp_time = ae->long_exp_reg;
+	m_exp_time = ae->middle_exp_reg;
+	s_exp_time = ae->short_exp_reg;
+	l_a_gain = ae->long_gain_reg;
+	m_a_gain = ae->middle_gain_reg;
+	s_a_gain = ae->short_gain_reg;
+
+	if (sc850sl->cur_mode->hdr_mode == HDR_X2) {
+		//2 stagger
+		l_a_gain = m_a_gain;
+		l_exp_time = m_exp_time;
+	}
+
+	ret = sc850sl_read_reg(sc850sl->client,
+			       SC850SL_REG_SE_START_POINT,
+			       SC850SL_REG_VALUE_08BIT,
+			       &se_start_point);
+	//set exposure
+	if (l_exp_time > sc850sl->cur_vts - se_start_point - 8)
+		l_exp_time = sc850sl->cur_vts - se_start_point - 8;
+	if (s_exp_time > se_start_point - 2)
+		s_exp_time = se_start_point - 2;
+
+	dev_dbg(&sc850sl->client->dev, "l_exp 0x%x 0x%x s_exp 0x%x 0x%x, se_start_point 0x%x cur_vts 0x%x\n",
+		l_exp_time, l_a_gain, s_exp_time, s_a_gain, se_start_point, sc850sl->cur_vts);
+	ret |= sc850sl_write_reg(sc850sl->client,
+				SC850SL_REG_EXP_LONG_H,
+				SC850SL_REG_VALUE_08BIT,
+				SC850SL_FETCH_EXP_H(l_exp_time));
+	ret |= sc850sl_write_reg(sc850sl->client,
+				 SC850SL_REG_EXP_LONG_M,
+				 SC850SL_REG_VALUE_08BIT,
+				 SC850SL_FETCH_EXP_M(l_exp_time));
+	ret |= sc850sl_write_reg(sc850sl->client,
+				 SC850SL_REG_EXP_LONG_L,
+				 SC850SL_REG_VALUE_08BIT,
+				 SC850SL_FETCH_EXP_L(l_exp_time));
+	ret |= sc850sl_write_reg(sc850sl->client,
+				 SC850SL_REG_EXP_SF_H,
+				 SC850SL_REG_VALUE_08BIT,
+				 SC850SL_FETCH_EXP_H(s_exp_time));
+	ret |= sc850sl_write_reg(sc850sl->client,
+				 SC850SL_REG_EXP_SF_M,
+				 SC850SL_REG_VALUE_08BIT,
+				 SC850SL_FETCH_EXP_M(s_exp_time));
+	ret |= sc850sl_write_reg(sc850sl->client,
+				 SC850SL_REG_EXP_SF_L,
+				 SC850SL_REG_VALUE_08BIT,
+				 SC850SL_FETCH_EXP_L(s_exp_time));
+
+	ret |= sc850sl_set_gain_reg(sc850sl, l_a_gain, SC850SL_LGAIN);
+	ret |= sc850sl_set_gain_reg(sc850sl, s_a_gain, SC850SL_SGAIN);
+
+	return ret;
+}
+
 static int sc850sl_get_channel_info(struct sc850sl *sc850sl, struct rkmodule_channel_info *ch_info)
 {
 	if (ch_info->index < PAD0 || ch_info->index >= PAD_MAX)
@@ -1167,10 +1719,78 @@ static int sc850sl_get_channel_info(struct sc850sl *sc850sl, struct rkmodule_cha
 	return 0;
 }
 
+static int sc850sl_set_setting(struct sc850sl *sc850sl, struct rk_sensor_setting *setting)
+{
+	int i = 0;
+	int cur_fps = 0;
+	s64 h_blank, vblank_def;
+	u64 pixel_rate = 0;
+	const struct sc850sl_mode *mode = NULL;
+	const struct sc850sl_mode *match = NULL;
+
+	dev_info(&sc850sl->client->dev,
+		 "sensor setting: %d x %d, fps:%d fmt:%d, mode:%d\n",
+		 setting->width, setting->height,
+		 setting->fps, setting->fmt, setting->mode);
+
+	for (i = 0; i < sc850sl->cfg_num; i++) {
+		mode = &supported_modes[i];
+		if (mode->width == setting->width &&
+		    mode->height == setting->height &&
+		    mode->hdr_mode == setting->mode &&
+		    mode->bus_fmt == setting->fmt) {
+			cur_fps = DIV_ROUND_CLOSEST(mode->max_fps.denominator,
+						    mode->max_fps.numerator);
+			if (cur_fps == setting->fps) {
+				match = mode;
+				break;
+			}
+		}
+	}
+
+	if (!match) {
+		dev_err(&sc850sl->client->dev,
+			"couldn't match the support modes %dx%d@%d\n",
+			setting->width, setting->height, setting->fps);
+		return -EINVAL;
+	}
+
+	dev_info(&sc850sl->client->dev,
+		 "-----%s: match the support mode, mode idx:%d-----\n",
+		 __func__, i);
+
+	sc850sl->cur_mode = match;
+	mode = sc850sl->cur_mode;
+
+	h_blank = mode->hts_def - mode->width;
+	__v4l2_ctrl_modify_range(sc850sl->hblank, h_blank, h_blank, 1, h_blank);
+	vblank_def = mode->vts_def - mode->height;
+	__v4l2_ctrl_modify_range(sc850sl->vblank, vblank_def,
+				 SC850SL_VTS_MAX - mode->height,
+				 1, vblank_def);
+	__v4l2_ctrl_s_ctrl(sc850sl->vblank, vblank_def);
+
+	__v4l2_ctrl_s_ctrl(sc850sl->link_freq, mode->mipi_freq_idx);
+	pixel_rate = (u32)link_freq_items[mode->mipi_freq_idx] /
+		     mode->bpp * 2 * SC850SL_4LANES;
+	__v4l2_ctrl_s_ctrl_int64(sc850sl->pixel_rate, pixel_rate);
+
+	sc850sl->cur_fps = mode->max_fps;
+	sc850sl->cur_vts = mode->vts_def;
+
+	dev_info(&sc850sl->client->dev,
+		 "hts_def:%d cur_vts:%d cur_fps:%d\n",
+		 mode->hts_def, mode->vts_def,
+		 sc850sl->cur_fps.denominator / sc850sl->cur_fps.numerator);
+
+	return 0;
+}
+
 static long sc850sl_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct sc850sl *sc850sl = to_sc850sl(sd);
 	struct rkmodule_hdr_cfg *hdr_cfg;
+	struct rk_sensor_setting *setting;
 	const struct sc850sl_mode *mode;
 	struct rkmodule_channel_info *ch_info;
 	long ret = 0;
@@ -1182,9 +1802,7 @@ static long sc850sl_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 	switch (cmd) {
 	case PREISP_CMD_SET_HDRAE_EXP:
-		/*
-		 * ret = sc850sl_set_hdrae(sc850sl, arg);
-		 */
+		ret = sc850sl_set_hdrae(sc850sl, arg);
 		if (sc850sl->cam_sw_info)
 			memcpy(&sc850sl->cam_sw_info->hdr_ae, (struct preisp_hdrae_exp_s *)(arg),
 			       sizeof(struct preisp_hdrae_exp_s));
@@ -1288,6 +1906,11 @@ static long sc850sl_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		ret = sc850sl_get_channel_info(sc850sl, ch_info);
 		break;
 
+	case RKCIS_CMD_SELECT_SETTING:
+		setting = (struct rk_sensor_setting *)arg;
+		ret = sc850sl_set_setting(sc850sl, setting);
+		break;
+
 	default:
 		ret = -ENOIOCTLCMD;
 		break;
@@ -1306,6 +1929,7 @@ static long sc850sl_compat_ioctl32(struct v4l2_subdev *sd,
 	struct rkmodule_hdr_cfg *hdr;
 	struct preisp_hdrae_exp_s *hdrae;
 	struct rkmodule_channel_info *ch_info;
+	struct rk_sensor_setting *setting;
 	long ret;
 	u32  stream;
 	u32 brl = 0;
@@ -1391,6 +2015,20 @@ static long sc850sl_compat_ioctl32(struct v4l2_subdev *sd,
 			return -EFAULT;
 		ret = sc850sl_ioctl(sd, cmd, &stream);
 		break;
+	case RKCIS_CMD_SELECT_SETTING:
+		setting = kzalloc(sizeof(*setting), GFP_KERNEL);
+		if (!setting) {
+			ret = -ENOMEM;
+			return ret;
+		}
+
+		if (copy_from_user(setting, up, sizeof(*setting))) {
+			kfree(setting);
+			return -EFAULT;
+		}
+		ret = sc850sl_ioctl(sd, cmd, setting);
+		kfree(setting);
+		break;
 	case RKMODULE_GET_SONY_BRL:
 		ret = sc850sl_ioctl(sd, cmd, &brl);
 		if (!ret) {
@@ -1455,6 +2093,17 @@ static int __sc850sl_start_stream(struct sc850sl *sc850sl)
 		ret = sc850sl_write_array(sc850sl->client, sc850sl->cur_mode->reg_list);
 		if (ret)
 			return ret;
+
+		/*
+		 * Reset VTS(vblank) to the mode default at every stream start.
+		 * A stale VTS left behind by a previous session (e.g. rkaiq AE
+		 * long-exposure) otherwise survives in the v4l2 ctrl and is
+		 * written back here by __v4l2_ctrl_handler_setup(), throttling
+		 * the sensor even with 3A stopped. AE may re-raise it later
+		 * only if the scene really needs a longer exposure.
+		 */
+		__v4l2_ctrl_s_ctrl(sc850sl->vblank,
+				  sc850sl->cur_mode->vts_def - sc850sl->cur_mode->height);
 
 		ret = __v4l2_ctrl_handler_setup(&sc850sl->ctrl_handler);
 		if (ret)
@@ -1620,6 +2269,7 @@ static int __sc850sl_power_on(struct sc850sl *sc850sl)
 
 	if (!IS_ERR(sc850sl->pwdn_gpio))
 		gpiod_set_value_cansleep(sc850sl->pwdn_gpio, 1);
+	usleep_range(20000, 21000);
 	return 0;
 err_clk:
 	if (!IS_ERR(sc850sl->reset_gpio))
@@ -1854,8 +2504,14 @@ static void sc850sl_modify_fps_info(struct sc850sl *sc850sl)
 {
 	const struct sc850sl_mode *mode = sc850sl->cur_mode;
 
-	sc850sl->cur_fps.denominator = mode->max_fps.denominator * sc850sl->cur_vts /
-				       mode->vts_def;
+	/*
+	 * fps is inversely proportional to VTS: raising VTS lowers the frame
+	 * rate. Match sc450ai semantics (den = max_den * vts_def / cur_vts);
+	 * the old direction reported an increasing fps while AE raised VTS,
+	 * feeding rkaiq/AE bogus feedback.
+	 */
+	sc850sl->cur_fps.denominator = mode->max_fps.denominator * mode->vts_def /
+				       sc850sl->cur_vts;
 }
 
 static int sc850sl_set_ctrl(struct v4l2_ctrl *ctrl)
@@ -1983,7 +2639,7 @@ static int sc850sl_initialize_controls(struct sc850sl *sc850sl)
 	handler->lock = &sc850sl->mutex;
 
 	sc850sl->link_freq = v4l2_ctrl_new_int_menu(handler, NULL,
-			     V4L2_CID_LINK_FREQ, 0, 0, link_freq_items);
+			     V4L2_CID_LINK_FREQ, 3, 0, link_freq_items);
 	v4l2_ctrl_s_ctrl(sc850sl->link_freq, mode->mipi_freq_idx);
 
 	/* pixel rate = link frequency * 2 * lanes / BITS_PER_SAMPLE */
@@ -2297,7 +2953,11 @@ static void __exit sensor_mod_exit(void)
 	i2c_del_driver(&sc850sl_i2c_driver);
 }
 
+#if defined(CONFIG_VIDEO_ROCKCHIP_THUNDER_BOOT_ISP)
+subsys_initcall(sensor_mod_init);
+#else
 device_initcall_sync(sensor_mod_init);
+#endif
 module_exit(sensor_mod_exit);
 
 MODULE_DESCRIPTION("smartsens,sc850sl sensor driver");

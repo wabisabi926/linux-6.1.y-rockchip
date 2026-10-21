@@ -282,6 +282,10 @@
 	status = "disabled";
 };
 
+&spdif_tx3 {
+	status = "disabled";
+};
+
 &uart6 {
 	status = "okay";
 };

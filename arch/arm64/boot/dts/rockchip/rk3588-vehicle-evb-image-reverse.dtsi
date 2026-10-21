@@ -72,6 +72,10 @@
 		vehicle,plane_name = "Esmart3-win0";
 	};
 
+	mipi_dcphy1: mipi_dcphy0: mipi-dcphy-dummy {
+		#phy-cells = <0>;
+	};
+
 	cif_phy: cif_phy {
 		status = "okay";
 

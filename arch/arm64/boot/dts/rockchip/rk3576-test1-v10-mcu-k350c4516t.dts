@@ -240,7 +240,7 @@
 };
 
 &vp2 {
-	mcu-timing {
+	endpoint {
 		mcu-pix-total = <5>;
 		mcu-cs-pst = <1>;
 		mcu-cs-pend = <4>;

@@ -153,6 +153,17 @@
 		regulator-always-on;
 	};
 
+    gpio-leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+
+		user-led1 {
+			gpios = <&gpio4 RK_PB4 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+			default-state = "on";
+		};
+	};
+
 	fan0: pwm-fan {
 		compatible = "pwm-fan";
 		#cooling-cells = <2>;
@@ -348,7 +359,7 @@
 	status = "okay";
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
@@ -389,11 +400,11 @@
 };
 
 &display_subsystem {
-	clocks = <&hdptxphy_hdmi0>;
+	clocks = <&hdptxphy0>;
 	clock-names = "hdmi0_phy_pll";
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 

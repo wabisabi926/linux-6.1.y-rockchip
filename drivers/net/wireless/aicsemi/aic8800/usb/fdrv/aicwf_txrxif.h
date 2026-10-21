@@ -152,9 +152,10 @@ struct aicwf_tx_priv {
 };
 
 
+#define DEFRAG_MAX_WAIT         40 //100
 #ifdef AICWF_RX_REORDER
 #define MAX_REORD_RXFRAME       250
-#define REORDER_UPDATE_TIME     500//50
+#define REORDER_UPDATE_TIME     50
 #define AICWF_REORDER_WINSIZE   64
 //SN_LESS(a, b) a-b<0 is ture
 #define SN_LESS(a, b)           (((a-b)&0x800)!=0)
@@ -178,13 +179,21 @@ struct reord_ctrl_info {
 };
 
 struct recv_msdu {
-     struct sk_buff  *pkt;
-     u8 tid;
-	 u8 forward;
-     u16 seq_num;
-     uint len;
-     u8 *rx_data;
-     //for pending rx reorder list
+    struct sk_buff  *pkt;
+    u8 tid;
+    u8 forward;
+    u16 seq_num;
+    //uint len;
+    u8 is_amsdu;
+    u8 is_ap_reord;
+    u8 ap_fwd_cnt;
+    u8 ap_resend_cnt;
+    u8 *rx_data;
+    struct sk_buff *first_fwd_skb;
+    struct sk_buff *last_fwd_skb;
+    struct sk_buff *first_resend_skb;
+    struct sk_buff *last_resend_skb;
+    //for pending rx reorder list
     struct list_head reord_pending_list;
     //for total frame list, when rxframe from busif, dequeue, when submit frame to net, enqueue
     struct list_head rxframe_list;
@@ -298,6 +307,7 @@ void aicwf_rxframe_queue_init_2(struct rx_frame_queue *pq, int max_len);
 void rxbuff_free(struct rx_buff *rxbuff);
 struct rx_buff *rxbuff_dequeue(struct rx_frame_queue *pq);
 bool aicwf_rxbuff_enqueue(struct device *dev, struct rx_frame_queue *rxq, struct rx_buff *pkt);
+struct rx_buff *rxbuff_queue_penq(struct rx_frame_queue *pq, struct rx_buff *p);
 extern struct aicwf_rx_buff_list aic_rx_buff_list;
 #endif
 

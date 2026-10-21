@@ -48,16 +48,52 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rock-5a-sata.dtbo \
 	rock-5b-hdmi1-8k.dtbo \
 	rock-5b-hdmi2-8k.dtbo \
+	rock-5b-okdo-5mp-camera.dtbo \
 	rock-5b-pd-max-voltage-12v.dtbo \
 	rock-5b-radxa-display-10hd.dtbo \
 	rock-5b-radxa-display-8hd.dtbo \
 	rock-5b-radxa-display-10fhd.dtbo \
+	rock-5b-rpi-camera-v1_3.dtbo \
 	rock-5b-rpi-camera-v2.dtbo \
+	rock-5b-radxa-camera-13m-214.dtbo \
 	rock-5b-radxa-camera-4k.dtbo \
+	rock-5b-radxa-camera-8m-219.dtbo \
 	rock-5b-sata.dtbo \
+	rock-5b-plus-cam0-okdo-5mp-camera.dtbo \
+	rock-5b-plus-cam0-rpi-camera-v1p3.dtbo \
+	rock-5b-plus-cam0-rpi-camera-v2.dtbo \
+	rock-5b-plus-cam0-radxa-camera-13m-214.dtbo \
 	rock-5b-plus-cam0-radxa-camera-4k.dtbo \
+	rock-5b-plus-cam0-radxa-camera-8m-219.dtbo \
+	rock-5b-plus-cam1-okdo-5mp-camera.dtbo \
+	rock-5b-plus-cam1-radxa-camera-13m-214.dtbo \
+	rock-5b-plus-cam1-radxa-camera-4k.dtbo \
+	rock-5b-plus-cam1-radxa-camera-8m-219.dtbo \
+	rock-5b-plus-cam1-rpi-camera-v1p3.dtbo \
+	rock-5b-plus-cam1-rpi-camera-v2.dtbo \
 	rock-5b-plus-radxa-display-8hd.dtbo \
+	rock-5b-plus-radxa-display-10fhd.dtbo \
+	rock-5t-cam0-okdo-5mp-camera.dtbo \
+	rock-5t-cam0-rpi-camera-v1p3.dtbo \
+	rock-5t-cam0-rpi-camera-v2.dtbo \
+	rock-5t-cam0-radxa-camera-13m-214.dtbo \
+	rock-5t-cam0-radxa-camera-4k.dtbo \
+	rock-5t-cam0-radxa-camera-8m-219.dtbo \
+	rock-5t-cam1-okdo-5mp-camera.dtbo \
+	rock-5t-cam1-rpi-camera-v1p3.dtbo \
+	rock-5t-cam1-rpi-camera-v2.dtbo \
+	rock-5t-cam1-radxa-camera-13m-214.dtbo \
+	rock-5t-cam1-radxa-camera-4k.dtbo \
+	rock-5t-cam1-radxa-camera-8m-219.dtbo \
+	rock-5t-radxa-display-8hd.dtbo \
 	rock-5t-radxa-display-10fhd.dtbo \
+	rock-5t-industrial-cam1-okdo-5mp-camera.dtbo \
+	rock-5t-industrial-cam1-rpi-camera-v1p3.dtbo \
+	rock-5t-industrial-cam1-rpi-camera-v2.dtbo \
+	rock-5t-industrial-cam1-radxa-camera-4k.dtbo \
+	rock-5t-industrial-cam1-radxa-camera-8m-219.dtbo \
+	rock-5t-industrial-radxa-display-10fhd.dtbo \
+	rock-5t-industrial-radxa-display-8hd.dtbo \
 	rock-5-itx-radxa-camera-4k-on-cam0.dtbo \
 	rock-5-itx-radxa-camera-4k-on-cam1.dtbo \
 	rock-5-itx-radxa-display-8hd-on-lcd0.dtbo \
@@ -88,6 +124,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	youyeetoo-r1-display-dsi1.dtbo \
 	youyeetoo-yy3588-camera0-gc8034.dtbo \
 	youyeetoo-yy3588-camera1-gc8034.dtbo \
+	youyeetoo-yy3588-display-dsi0.dtbo \
 	youyeetoo-yy3588-display-dsi1.dtbo \
 	khadas-edge2-display-dsi0.dtbo \
 	khadas-edge2-display-dsi1.dtbo \
@@ -103,6 +140,10 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3528-rock-2-enable-pcie.dtbo \
 	rk3566-roc-pc-sata2.dtbo \
 	rk3576-can1-m1.dtbo \
+	rk3576-dshanpi-a1-csi1-imx415.dtbo \
+	rk3576-dshanpi-a1-csi3-imx415.dtbo \
+	rk3576-dshanpi-a1-dsi480x360-touch.dtbo \
+	rk3576-dshanpi-a1-dsi1024x768-touch.dtbo \
 	rk3576-i2c0-m1.dtbo \
 	rk3576-i2c1-m0.dtbo \
 	rk3576-i2c2-m0.dtbo \
@@ -115,6 +156,8 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3576-pwm1-ch0-m3.dtbo \
 	rk3576-pwm2-ch6-m2.dtbo \
 	rk3576-pwm2-ch7-m2.dtbo \
+	rock-4d-pcie0-gen1.dtbo \
+	rock-4d-radxa-camera-4k.dtbo \
 	rk3576-spi4-m0-cs1-spidev.dtbo \
 	rk3576-uart2-m2.dtbo \
 	rk3576-uart6-m3.dtbo \
@@ -126,6 +169,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3588-can2-m1.dtbo \
 	rk3588-dwc3-host.dtbo \
 	rk3588-dwc3-peripheral.dtbo \
+	rk3588-full-cpufreq.dtbo \
 	rk3588-i2c0-m1.dtbo \
 	rk3588-i2c1-m0.dtbo \
 	rk3588-i2c1-m2.dtbo \
@@ -148,6 +192,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3588-ov13855-c1.dtbo \
 	rk3588-ov13855-c2.dtbo \
 	rk3588-ov13855-c3.dtbo \
+	rk3588-pcie3x4-x2.dtbo \
 	rk3588-pwm0-m0.dtbo \
 	rk3588-pwm0-m1.dtbo \
 	rk3588-pwm0-m2.dtbo \
@@ -178,6 +223,12 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3588-pwm7-m0.dtbo \
 	rk3588-pwm7-m3.dtbo \
 	rk3588-pwm8-m0.dtbo \
+	rk3588-rkvdec0.dtbo \
+	rk3588-rkvdec1.dtbo \
+	rk3588-rkvenc0.dtbo \
+	rk3588-rkvenc1.dtbo \
+	rk3588-sdhci-hs400.dtbo \
+	rk3588-sdio-uhs.dtbo \
 	rk3588-spi0-m1-cs0-spidev.dtbo \
 	rk3588-spi0-m1-cs1-spidev.dtbo \
 	rk3588-spi0-m2-cs0-cs1-spidev.dtbo \

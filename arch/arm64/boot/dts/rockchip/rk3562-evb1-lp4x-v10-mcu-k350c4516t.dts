@@ -267,7 +267,7 @@
 	 * To increase the frame rate, reduce all parameters because
 	 * the max dclk rate of mcu is 150M in rk3562.
 	 */
-	mcu-timing {
+	endpoint {
 		mcu-pix-total = <5>;
 		mcu-cs-pst = <1>;
 		mcu-cs-pend = <4>;

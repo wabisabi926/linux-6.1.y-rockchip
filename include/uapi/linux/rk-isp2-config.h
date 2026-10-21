@@ -12,7 +12,7 @@
 #include <linux/v4l2-controls.h>
 #include <linux/rk-camera-module.h>
 
-#define RKISP_API_VERSION		KERNEL_VERSION(3, 1, 0)
+#define RKISP_API_VERSION		KERNEL_VERSION(3, 3, 0)
 
 /****************ISP SUBDEV IOCTL*****************************/
 
@@ -99,6 +99,12 @@
 
 #define RKISP_CMD_AIAWB_BUF \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 29, struct rkisp_aiawb_buffd)
+
+#define RKISP_CMD_BTNR_WGT_READY \
+	_IO('V', BASE_VIDIOC_PRIVATE + 30)
+
+#define RKISP_CMD_GET_UNITE_INFO \
+	_IOR('V', BASE_VIDIOC_PRIVATE + 31, struct rkisp_unite_info)
 
 /****************ISP VIDEO IOCTL******************************/
 
@@ -374,6 +380,34 @@ struct rkisp_isp_info {
 	__u8 compr_bit;
 } __attribute__ ((packed));
 
+#define RKISP_UNITE_WIN_MAX 9
+/* struct rkisp_unite_window
+ * act_width: actual width of isp, include extend pixel.
+ * act_height: actual height of isp, include extend pixel.
+ * up_extend: up extend pixel.
+ * down_extend: down extend pixel.
+ * left_extend: left extend pixel.
+ * right_extend: right extend pixel
+ */
+struct rkisp_unite_window {
+	__u32 act_width;
+	__u32 act_height;
+	__u32 up_extend;
+	__u32 down_extend;
+	__u32 left_extend;
+	__u32 right_extend;
+} __attribute__ ((packed));
+
+/* struct rkisp_unite_info
+ * h_div: number of horizontal blocks
+ * v_div: number of vertical blocks
+ */
+struct rkisp_unite_info {
+	__u32 h_div;
+	__u32 v_div;
+	struct rkisp_unite_window win[RKISP_UNITE_WIN_MAX];
+} __attribute__ ((packed));
+
 enum isp2x_mesh_buf_stat {
 	MESH_BUF_INIT = 0,
 	MESH_BUF_WAIT2CHIP,
@@ -459,7 +493,9 @@ struct rkisp_aiisp_st {
 } __attribute__ ((packed));
 
 /* struct rkisp_aiisp_cfg
- * mode: 0:isp whole  1:isp divided into isp_fe and isp_be 2:isp divided into isp_fe and (isp_fe isp_be)
+ * mode: 0:isp whole
+ *       1:isp divided into isp_fe and isp_be
+ *       2:isp divided into isp_fe isp_fe and isp_be
  * wr_linecnt: btnr iir write irq line
  * rd_linecnt: isp_be read irq line
  * wr_mode: 0:frame with only one RKISP_AIISP_WR_LINECNT_ID event, else event per wr_linecnt
@@ -2222,6 +2258,7 @@ struct rkisp_thunderboot_resmem_head {
 	__u32 pre_buf_num;
 	__u32 pre_buf_addr[MAX_PRE_BUF_NUM];
 	__u32 pre_buf_timestamp[MAX_PRE_BUF_NUM];
+	__u32 rkisp_tb_resmem_head_size;
 } __attribute__ ((packed));
 
 /**

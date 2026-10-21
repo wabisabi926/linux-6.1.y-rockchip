@@ -15,6 +15,11 @@
 
 #include "rwnx_defs.h"
 
+#ifdef RF_WRITE_FILE
+#define	FW_RF_CALIB_FILE "aic_rf_calib.bin"
+#endif
+
+
 int rwnx_send_reset(struct rwnx_hw *rwnx_hw);
 int rwnx_send_start(struct rwnx_hw *rwnx_hw);
 int rwnx_send_version_req(struct rwnx_hw *rwnx_hw, struct mm_version_cfm *cfm);
@@ -62,12 +67,13 @@ int rwnx_send_arpoffload_en_req(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_v
                           u32_l ipaddr,  u8_l enable);
 #endif
 int rwnx_send_rf_config_req(struct rwnx_hw *rwnx_hw, u8_l ofst, u8_l sel, u8_l *tbl, u16_l len);
+int rwnx_send_rf_config_v2_req(struct rwnx_hw *rwnx_hw, u16_l ofst, u8_l sel, u8_l *tbl, u16_l len);
 int rwnx_send_rf_calib_req(struct rwnx_hw *rwnx_hw, struct mm_set_rf_calib_cfm *cfm);
 int rwnx_send_get_macaddr_req(struct rwnx_hw *rwnx_hw, struct mm_get_mac_addr_cfm *cfm);
 
 #ifdef CONFIG_RWNX_FULLMAC
 int rwnx_send_me_config_req(struct rwnx_hw *rwnx_hw);
-int rwnx_send_me_chan_config_req(struct rwnx_hw *rwnx_hw);
+int rwnx_send_me_chan_config_req(struct rwnx_hw *rwnx_hw, char *ccode);
 int rwnx_send_me_set_control_port_req(struct rwnx_hw *rwnx_hw, bool opened,
                                       u8 sta_idx);
 int rwnx_send_me_sta_add(struct rwnx_hw *rwnx_hw, struct station_parameters *params,
@@ -153,6 +159,8 @@ int rwnx_send_dbg_get_sys_stat_req(struct rwnx_hw *rwnx_hw,
                                    struct dbg_get_sys_stat_cfm *cfm);
 int rwnx_send_dbg_mem_block_write_req(struct rwnx_hw *rwnx_hw, u32 mem_addr,
                                       u32 mem_size, u32 *mem_data);
+int rwnx_send_dbg_mem_block_read_req(struct rwnx_hw *rwnx_hw, u32 mem_addr,
+									u32 mem_size, struct dbg_mem_block_read_cfm *cfm);
 int rwnx_send_dbg_start_app_req(struct rwnx_hw *rwnx_hw, u32 boot_addr,
                                 u32 boot_type);
 int rwnx_send_dbg_gpio_write_req(struct rwnx_hw *rwnx_hw, u8_l gpio_idx, u8_l gpio_val);
@@ -169,19 +177,36 @@ int rwnx_send_set_temp_comp_req(struct rwnx_hw *rwnx_hw, struct mm_set_vendor_sw
 int rwnx_send_vendor_hwconfig_req(struct rwnx_hw *rwnx_hw, uint32_t hwconfig_id, int32_t *param, int32_t *param_out);
 int rwnx_send_vendor_swconfig_req(struct rwnx_hw *rwnx_hw, uint32_t swconfig_id, int32_t *param_in, int32_t *param_out);
 int rwnx_send_mask_set_ext_flags_req(struct rwnx_hw *rwnx_hw, uint32_t flags_mask, uint32_t flags_val, struct mm_set_vendor_swconfig_cfm *cfm);
+int rwnx_send_vendor_hwconfig_req_x2(struct rwnx_hw *rwnx_hw, uint32_t hwconfig_id, int32_t *param, int32_t *param_out);
+int rwnx_send_vendor_swconfig_req_x2(struct rwnx_hw *rwnx_hw, uint32_t swconfig_id, int32_t *param_in, int32_t *param_out);
 
 int rwnx_send_get_fw_version_req(struct rwnx_hw *rwnx_hw, struct mm_get_fw_version_cfm *cfm);
 int rwnx_send_txpwr_idx_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_txpwr_ofst_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_txpwr_ofst2x_req(struct rwnx_hw *rwnx_hw);
+int rwnx_send_txpwr_ofst2x_v2_req(struct rwnx_hw *rwnx_hw);
+int rwnx_send_txpwr_ofst2x_v3_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_set_filter(struct rwnx_hw *rwnx_hw, uint32_t filter);
 int rwnx_send_txpwr_lvl_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_txpwr_lvl_v3_req(struct rwnx_hw *rwnx_hw);
+int rwnx_send_txpwr_lvl_v4_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_txpwr_lvl_adj_req(struct rwnx_hw *rwnx_hw);
+int rwnx_send_txpwr_lvl_adj_v2_req(struct rwnx_hw *rwnx_hw);
+#ifdef CONFIG_WOWLAN
+int rwnx_send_set_pkt_filter_req(struct rwnx_hw *rwnx_hw, u8_l *param);
+int rwnx_send_dummy_reboot(struct rwnx_hw *rwnx_hw);
+#endif
+#ifdef CONFIG_DYNAMIC_PERPWR
+int rwnx_send_txpwr_per_sta_req(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta);
+#endif
+int rwnx_send_get_temp_req(struct rwnx_hw *rwnx_hw, s8_l *temp);
 
 //#ifdef CONFIG_USB_BT
 int rwnx_send_reboot(struct rwnx_hw *rwnx_hw);
 //#endif // CONFIG_USB_BT
-
+struct rwnx_cmd *rwnx_cmd_malloc(void);
+void rwnx_cmd_free(struct rwnx_cmd *cmd);
+int rwnx_init_cmd_array(void);
+void rwnx_free_cmd_array(void);
 
 #endif /* _RWNX_MSG_TX_H_ */

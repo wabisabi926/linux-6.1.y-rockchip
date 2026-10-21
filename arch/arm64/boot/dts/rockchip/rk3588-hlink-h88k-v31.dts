@@ -100,6 +100,13 @@
 		};
 	};
 
+	minidump: minidump {
+		compatible = "rockchip,minidump";
+		smem-region = <&minidump_smem>;
+		minidump-region = <&minidump_mem>;
+		status = "disabled";
+	};
+
 	reserved_memory: reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -108,8 +115,17 @@
 		cma: cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0x0 (256 * 0x100000)>;
+			reg = <0x0 (256 * 0x100000) 0x0 (256 * 0x100000)>;
 			linux,cma-default;
+		};
+
+		/* Reserved 128MB memory for hdmirx-controller@fdee0000
+		 * disable the node if hdmirx is disabled
+		 */
+		cma_hdmirx: cma-hdmirx {
+			compatible = "shared-dma-pool";
+			reusable;
+			reg = <0x0 (512 * 0x100000) 0x0 (128 * 0x100000)>;
 		};
 
 		drm_logo: drm-logo@00000000 {
@@ -131,23 +147,17 @@
 			pmsg-size = <0x50000>;
 		};
 
-		/* Reserve 256MB memory for hdmirx-controller@fdee0000
-		 * remove the node if hdmirx is disabled 
-		 */
-		cma_hdmirx: cma-hdmirx {
-			compatible = "shared-dma-pool";
-			reusable;
-			size = <0x0 (256 * 0x100000)>;
+		minidump_smem: minidump-smem@1f0000 {
+			reg = <0x0 0x1f0000 0x0 0x100>;		/* do not change */
+			no-map;
+			status = "disabled";
 		};
-	};
 
-	rfkill_modem: rfkill-modem {
-		compatible = "rfkill-gpio";
-		name = "rfkill-modem";
-		pinctrl-names = "default";
-		pinctrl-0 = <&modem_reset_pin>;
-		reset-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_HIGH>;
-		type = "wwan";
+		minidump_mem: minidump-mem@c000000 {
+			reg = <0x0 0x0c000000 0x0 0x2000000>;	/* changing according to your project */
+			no-map;
+			status = "disabled";
+		};
 	};
 
 	/* dc-in or typec-in: maximum supported voltage: 22V */
@@ -386,7 +396,7 @@
 		simple-audio-card,frame-master = <&masterdai>;
 		simple-audio-card,hp-det-gpio = <&gpio1 RK_PD5 GPIO_ACTIVE_LOW>;
 		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,name = "audio-analog";
+		simple-audio-card,name = "rockchip,es8388";
 		simple-audio-card,pin-switches = "Headphones";
 		simple-audio-card,widgets =
 			"Microphone", "Microphone Jack",
@@ -406,7 +416,7 @@
 		status = "okay";
 		compatible = "rockchip,hdmi";
 		rockchip,mclk-fs = <128>;
-		rockchip,card-name = "audio-hdmi0";
+		rockchip,card-name = "rockchip,hdmi0";
 		rockchip,cpu = <&i2s5_8ch>;
 		rockchip,codec = <&hdmi0>;
 		rockchip,jack-det;
@@ -416,7 +426,7 @@
 		status = "okay";
 		compatible = "rockchip,hdmi";
 		rockchip,mclk-fs = <128>;
-		rockchip,card-name = "audio-hdmi1";
+		rockchip,card-name = "rockchip,hdmi1";
 		rockchip,cpu = <&i2s6_8ch>;
 		rockchip,codec = <&hdmi1>;
 		rockchip,jack-det;
@@ -425,23 +435,34 @@
 	dp0_sound: dp0-sound {
 		status = "okay";
 		compatible = "rockchip,hdmi";
-		rockchip,card-name= "audio-dp0";
+		rockchip,card-name= "rockchip,dp0";
 		rockchip,mclk-fs = <512>;
 		rockchip,cpu = <&spdif_tx2>;
 		rockchip,codec = <&dp0 1>;
 		rockchip,jack-det;
 	};
 
+	hdmiin_dc: hdmiin-dc {
+		compatible = "rockchip,dummy-codec";
+		#sound-dai-cells = <0>;
+		status = "okay";
+	};
+
 	hdmiin_sound: hdmiin-sound {
-		compatible = "rockchip,hdmi";
-		rockchip,mclk-fs = <128>;
-		rockchip,format = "i2s";
-		rockchip,bitclock-master = <&hdmirx_ctrler>;
-		rockchip,frame-master = <&hdmirx_ctrler>;
-		rockchip,card-name = "audio-hdmiin";
-		rockchip,cpu = <&i2s7_8ch>;
-		rockchip,codec = <&hdmirx_ctrler 0>;
-		rockchip,jack-det;
+		compatible = "simple-audio-card";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,name = "rockchip,hdmiin";
+		simple-audio-card,bitclock-master = <&dailink0_master>;
+		simple-audio-card,frame-master = <&dailink0_master>;
+		status = "okay";
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s7_8ch>;
+		};
+
+		dailink0_master: simple-audio-card,codec {
+			sound-dai = <&hdmiin_dc>;
+		};
 	};
 
 	ir_receiver: ir-receiver {
@@ -449,6 +470,15 @@
 		gpios = <&gpio0 RK_PD4 GPIO_ACTIVE_LOW>;
 		pinctrl-0 = <&ir_int_pin>;
 		pinctrl-names = "default";
+	};
+
+	rfkill_modem: rfkill-modem {
+		compatible = "rfkill-gpio";
+		label = "rfkill-modem";
+		pinctrl-names = "default";
+		pinctrl-0 = <&modem_reset_pin>;
+		radio-type = "wwan";
+		reset-gpios = <&gpio4 RK_PC6 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -683,6 +713,8 @@
 };
 
 &i2s7_8ch {
+	rockchip,capture-channels = <2>;
+	rockchip,trcm-sync-rx-only;
 	status = "okay";
 };
 
@@ -702,9 +734,8 @@
 		interrupt-parent = <&gpio0>;
 		interrupts = <7 IRQ_TYPE_LEVEL_LOW>;
 
-		pinctrl-names = "default", "pmic-power-off";
-		pinctrl-0 = <&pmic_pins>, <&rk806_dvs1_null>, <&rk806_dvs2_null>, <&rk806_dvs3_null>;
-		pinctrl-1 = <&rk806_dvs1_pwrdn>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pmic_pins>;
 
 		/* 2800mv-3500mv */
 		low_voltage_threshold = <3000>;
@@ -741,91 +772,6 @@
 
 		pwrkey {
 			status = "okay";
-		};
-
-		pinctrl_rk806: pinctrl_rk806 {
-			gpio-controller;
-			#gpio-cells = <2>;
-
-			rk806_dvs1_null: rk806_dvs1_null {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs1_slp: rk806_dvs1_slp {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs1_pwrdn: rk806_dvs1_pwrdn {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs1_rst: rk806_dvs1_rst {
-				pins = "gpio_pwrctrl1";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs2_null: rk806_dvs2_null {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs2_slp: rk806_dvs2_slp {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs2_pwrdn: rk806_dvs2_pwrdn {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs2_rst: rk806_dvs2_rst {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs2_dvs: rk806_dvs2_dvs {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun4";
-			};
-
-			rk806_dvs2_gpio: rk806_dvs2_gpio {
-				pins = "gpio_pwrctrl2";
-				function = "pin_fun5";
-			};
-
-			rk806_dvs3_null: rk806_dvs3_null {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun0";
-			};
-
-			rk806_dvs3_slp: rk806_dvs3_slp {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun1";
-			};
-
-			rk806_dvs3_pwrdn: rk806_dvs3_pwrdn {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun2";
-			};
-
-			rk806_dvs3_rst: rk806_dvs3_rst {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun3";
-			};
-
-			rk806_dvs3_dvs: rk806_dvs3_dvs {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun4";
-			};
-
-			rk806_dvs3_gpio: rk806_dvs3_gpio {
-				pins = "gpio_pwrctrl3";
-				function = "pin_fun5";
-			};
 		};
 
 		regulators {
@@ -1135,6 +1081,7 @@
 
 	bluetooth: bluetooth {
 		compatible = "brcm,bcm4345c5";
+		status = "disabled";
 		clocks = <&hym8563>;
 		clock-names = "ext_clock";
 
@@ -1156,7 +1103,7 @@
 };
 
 &display_subsystem {
-	clocks = <&hdptxphy_hdmi0>, <&hdptxphy_hdmi1>;
+	clocks = <&hdptxphy0>, <&hdptxphy1>;
 	clock-names = "hdmi0_phy_pll", "hdmi1_phy_pll";
 	memory-region = <&drm_logo>;
 	memory-region-names = "drm-logo";
@@ -1179,16 +1126,18 @@
 	connect = <&vp2_out_dp0>;
 };
 
-&hdptxphy_hdmi0 {
+&hdptxphy0 {
 	status = "okay";
 };
 
-&hdptxphy_hdmi1 {
+&hdptxphy1 {
 	status = "okay";
 };
 
 &hdmi0 {
 	cec-enable = "true";
+	ddc-i2c-scl-high-time-ns = <9625>;
+	ddc-i2c-scl-low-time-ns = <10000>;
 	enable-gpios = <&gpio4 RK_PB1 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
@@ -1207,6 +1156,8 @@
 
 &hdmi1 {
 	cec-enable = "true";
+	ddc-i2c-scl-high-time-ns = <9625>;
+	ddc-i2c-scl-low-time-ns = <10000>;
 	enable-gpios = <&gpio4 RK_PB2 GPIO_ACTIVE_HIGH>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&hdmim2_tx1_cec &hdmim0_tx1_hpd &hdmim1_tx1_scl &hdmim1_tx1_sda>;
@@ -1281,14 +1232,14 @@
 /* Should work with at least 128MB cma reserved above. */
 &hdmirx_ctrler {
 	status = "okay";
+	cec-enable;
 	memory-region = <&cma_hdmirx>;
 
-	#sound-dai-cells = <1>;
 	/* Effective level used to trigger HPD: 0-low, 1-high */
 	hpd-trigger-level = <1>;
 	hdmirx-det-gpios = <&gpio2 RK_PB5 GPIO_ACTIVE_LOW>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&hdmim1_rx_cec &hdmim1_rx_hpdin &hdmim1_rx_scl &hdmim1_rx_sda &hdmirx_det>;
+	pinctrl-0 = <&hdmim1_rx_cec &hdmim1_rx_hpdin &hdmim1_rx_scl &hdmim1_rx_sda &hdmirx_det_l>;
 };
 
 &av1d {
@@ -1589,8 +1540,6 @@
 	status = "okay";
 	orientation-switch;
 
-	rockchip,dp-lane-mux = < 2 3 >;
-
 	svid = <0xff01>;
 	sbu1-dc-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
 	sbu2-dc-gpios = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
@@ -1705,6 +1654,8 @@
 };
 
 &pcie2x1l0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pcie2_0_rst>;
 	reset-gpios = <&gpio0 RK_PB0 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 	vpcie3v3-supply = <&vcc3v3_sys>;
@@ -1808,6 +1759,19 @@
  * H88K v3.1: pcie3x4 is M.2 (M Key) socket for NVME ssd
  */
 &pcie30phy {
+	/*
+	 * 默认保持 AGGREGATION(4)：PCIE30X4 聚合 Port0(lane0/1, PHY0) +
+	 * Port1(lane2/3, PHY1)，M.2 槽的 NVMe 跑满 Gen3 x4。
+	 *
+	 * 注意：只使用 lane0 的 x1 卡（如 RK1828，实测链路 gen2x1）不会在
+	 * lane2/3 上提供端接，PHY1 永远停在 0x7；而 AGGREGATION 要求 PHY0 且
+	 * PHY1 都完成 SRAM init ⇒ 整条控制器 probe 失败（phy lock failed / -110），
+	 * 卡无法枚举。这种场景请改用通用 overlay（适用于所有含 pcie3x4 /
+	 * pcie30phy 节点的板子）：
+	 *	/boot/bootEnv.txt: overlays=pcie3x4-x2
+	 * （见 overlay/rk3588-pcie3x4-x2.dtso，它把本属性改为
+	 *   <PHY_MODE_PCIE_NANBNB> 并给 &pcie3x4 加 num-lanes = <2>）
+	 */
 	rockchip,pcie30-phymode = <PHY_MODE_PCIE_AGGREGATION>;
 	status = "okay";
 };
@@ -1870,7 +1834,7 @@
 	};
 
 	hdmirx {
-		hdmirx_det: hdmirx-det {
+		hdmirx_det_l: hdmirx-det-l {
 			rockchip,pins = <2 RK_PB5 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
@@ -1921,7 +1885,13 @@
 		};
 
 		modem_reset_pin: modem-reset-pin {
-			rockchip,pins = <4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_down>;
+			rockchip,pins = <4 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	pcie2 {
+		pcie2_0_rst: pcie2-0-rst {
+			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 
