@@ -129,7 +129,7 @@ static const u16 trans_tbl_avs2d[] = {
 	192, 193, 194, 195, 196, 197, 198, 199
 };
 
-static struct mpp_trans_info rkvdec_v2_trans[] = {
+static struct mpp_trans_info rkvdec_v2_trans[RKVDEC_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_tbl_h265d),
 		.table = trans_tbl_h265d,
@@ -191,7 +191,7 @@ static const u16 trans_vdpu383_tbl_av1d[] = {
 	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
 };
 
-static struct mpp_trans_info rkvdec_vdpu383_trans[] = {
+static struct mpp_trans_info rkvdec_vdpu383_trans[RKVDEC_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_vdpu383_tbl_h265d),
 		.table = trans_vdpu383_tbl_h265d,
@@ -243,7 +243,7 @@ static const u16 trans_vdpu384a_tbl_h264d[] = {
 	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
 };
 
-static struct mpp_trans_info rkvdec_vdpu384a_trans[] = {
+static struct mpp_trans_info rkvdec_vdpu384a_trans[RKVDEC_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_vdpu384a_tbl_h265d),
 		.table = trans_vdpu384a_tbl_h265d,
@@ -270,7 +270,7 @@ static const u16 trans_vdpu384b_tbl_gen[] = {
 	222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232
 };
 
-static struct mpp_trans_info rkvdec_vdpu384b_trans[] = {
+static struct mpp_trans_info rkvdec_vdpu384b_trans[RKVDEC_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_vdpu384b_tbl_gen),
 		.table = trans_vdpu384b_tbl_gen,
@@ -297,7 +297,13 @@ static int mpp_extract_rcb_info(struct rkvdec2_rcb_info *rcb_inf,
 				struct mpp_request *req)
 {
 	u32 max_size = ARRAY_SIZE(rcb_inf->elem);
-	u32 cnt = req->size / sizeof(rcb_inf->elem[0]);
+	u32 cnt, i;
+
+	if (req->size % sizeof(rcb_inf->elem[0])) {
+		mpp_err("error: req_size %x\n", req->size);
+		return -EINVAL;
+	}
+	cnt = req->size / sizeof(rcb_inf->elem[0]);
 
 	if (req->size > sizeof(rcb_inf->elem)) {
 		mpp_err("count %d,max_size %d\n", cnt, max_size);
@@ -306,6 +312,15 @@ static int mpp_extract_rcb_info(struct rkvdec2_rcb_info *rcb_inf,
 	if (copy_from_user(rcb_inf->elem, req->data, req->size)) {
 		mpp_err("copy_from_user failed\n");
 		return -EINVAL;
+	}
+
+	for (i = 0; i < cnt; i++) {
+		if (rcb_inf->elem[i].index >= RKVDEC_REG_NUM) {
+			mpp_err("invalid rcb reg_idx %u\n",
+				rcb_inf->elem[i].index);
+			rcb_inf->cnt = 0;
+			return -EINVAL;
+		}
 	}
 	rcb_inf->cnt = cnt;
 
@@ -334,7 +349,7 @@ static int rkvdec2_extract_task_msg(struct mpp_session *session,
 			off_e = hw_info->reg_end * sizeof(u32);
 			ret = mpp_check_req(req, 0, sizeof(task->reg), off_s, off_e);
 			if (ret)
-				continue;
+				return ret;
 			if (copy_from_user((u8 *)task->reg + req->offset,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -361,13 +376,18 @@ static int rkvdec2_extract_task_msg(struct mpp_session *session,
 			memcpy(&task->r_reqs[task->r_req_cnt++], req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		case MPP_CMD_SET_RCB_INFO: {
 			struct rkvdec2_session_priv *priv = session->priv;
 
-			if (priv)
-				mpp_extract_rcb_info(&priv->rcb_inf, req);
+			if (priv) {
+				ret = mpp_extract_rcb_info(&priv->rcb_inf, req);
+				if (ret)
+					return ret;
+			}
 		} break;
 		default:
 			break;
@@ -400,7 +420,12 @@ int mpp_set_rcbbuf(struct mpp_dev *mpp, struct mpp_session *session,
 		for (i = 0; i < rcb_inf->cnt; i++) {
 			reg_idx = rcb_inf->elem[i].index;
 			rcb_size = rcb_inf->elem[i].size;
-			if ((rcb_offset + rcb_size) > dec->rcb_size) {
+			if (reg_idx >= RKVDEC_REG_NUM) {
+				mpp_err("invalid rcb reg_idx %u\n", reg_idx);
+				continue;
+			}
+			if (rcb_offset >= dec->rcb_size ||
+			    rcb_size > dec->rcb_size - rcb_offset) {
 				mpp_debug(DEBUG_SRAM_INFO,
 					  "rcb: reg %d use original buffer\n", reg_idx);
 				continue;
@@ -438,12 +463,16 @@ int rkvdec2_task_init(struct mpp_dev *mpp, struct mpp_session *session,
 		int reg_fmt = mpp_task->hw_info->reg_fmt;
 		u32 fmt = RKVDEC_GET_FORMAT(task->reg[reg_fmt]);
 
+		if (fmt >= RKVDEC_FMT_BUTT) {
+			mpp_err("invalid fmt %u\n", fmt);
+			ret = -EINVAL;
+			goto fail;
+		}
 		ret = mpp_translate_reg_address(session, mpp_task,
-						fmt, task->reg, &task->off_inf);
+						&mpp->var->trans_info[fmt],
+						task->reg, &task->off_inf);
 		if (ret)
 			goto fail;
-
-		mpp_translate_reg_offset_info(mpp_task, &task->off_inf, task->reg);
 	}
 
 	task->strm_addr = task->reg[RKVDEC_REG_RLC_BASE_INDEX];

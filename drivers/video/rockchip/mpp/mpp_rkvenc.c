@@ -238,7 +238,7 @@ static const u16 trans_tbl_h265e[] = {
 	126, 127, 128, 129, 130, 131, 95, 96
 };
 
-static struct mpp_trans_info trans_rk_rkvenc[] = {
+static struct mpp_trans_info trans_rk_rkvenc[RKVENC_FMT_BUTT] = {
 	[RKVENC_FMT_H264E] = {
 		.count = ARRAY_SIZE(trans_tbl_h264e),
 		.table = trans_tbl_h264e,
@@ -263,8 +263,8 @@ static int rkvenc_extract_task_msg(struct rkvenc_task *task,
 
 		switch (req->cmd) {
 		case MPP_CMD_SET_REG_WRITE: {
-			int req_base;
-			int max_size;
+			u32 req_base;
+			u32 max_size;
 			u8 *dst = NULL;
 
 			if (req->offset >= RKVENC_L2_OFFSET) {
@@ -291,8 +291,8 @@ static int rkvenc_extract_task_msg(struct rkvenc_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_READ: {
-			int req_base;
-			int max_size;
+			u32 req_base;
+			u32 max_size;
 
 			if (req->offset >= RKVENC_L2_OFFSET) {
 				req_base = RKVENC_L2_OFFSET;
@@ -311,7 +311,9 @@ static int rkvenc_extract_task_msg(struct rkvenc_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
@@ -346,15 +348,15 @@ static void *rkvenc_alloc_task(struct mpp_session *session,
 	if (ret)
 		goto fail;
 	task->fmt = RKVENC_GET_FORMAT(task->reg[RKVENC_ENC_PIC_INDEX]);
+	if (task->fmt >= RKVENC_FMT_BUTT)
+		goto fail;
 	/* process fd in register */
 	if (!(msgs->flags & MPP_FLAGS_REG_FD_NO_TRANS)) {
-		ret = mpp_translate_reg_address(session,
-						mpp_task, task->fmt,
+		ret = mpp_translate_reg_address(session, mpp_task,
+						&mpp->var->trans_info[task->fmt],
 						task->reg, &task->off_inf);
 		if (ret)
 			goto fail;
-		mpp_translate_reg_offset_info(mpp_task,
-					      &task->off_inf, task->reg);
 	}
 	task->link_mode = RKVENC_MODE_ONEFRAME;
 	task->clk_mode = CLK_MODE_NORMAL;
@@ -821,7 +823,7 @@ static int rkvenc_procfs_init(struct mpp_dev *mpp)
 	mpp_procfs_create_u32("session_buffers", 0644,
 			      enc->procfs, &mpp->session_max_buffers);
 	/* for show session info */
-	proc_create_single_data("sessions-info", 0444,
+	proc_create_single_data("sessions-info", 0400,
 				enc->procfs, rkvenc_show_session_info, mpp);
 
 	return 0;

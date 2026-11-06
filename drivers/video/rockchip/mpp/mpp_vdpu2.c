@@ -51,6 +51,7 @@
 #define VDPU2_FMT_VP7D				9
 #define VDPU2_FMT_VP8D				10
 #define VDPU2_FMT_AVSD				11
+#define VDPU2_FMT_BUTT				12
 
 #define VDPU2_REG_DEC_INT			0x0dc
 #define VDPU2_REG_DEC_INT_INDEX			(55)
@@ -149,7 +150,7 @@ static const u16 trans_tbl_vp8d[] = {
 	61, 63, 64, 131, 136, 137, 140, 141, 142, 143, 144, 145, 146, 147, 149
 };
 
-static struct mpp_trans_info vdpu_v2_trans[] = {
+static struct mpp_trans_info vdpu_v2_trans[VDPU2_FMT_BUTT] = {
 	[VDPU2_FMT_H264D] = {
 		.count = ARRAY_SIZE(trans_tbl_h264d),
 		.table = trans_tbl_h264d,
@@ -205,17 +206,21 @@ static int vdpu_process_reg_fd(struct mpp_session *session,
 			       struct mpp_task_msgs *msgs)
 {
 	int ret = 0;
+	struct mpp_dev *mpp = mpp_get_task_used_device(&task->mpp_task, session);
 	int fmt = VDPU2_GET_FORMAT(task->reg[VDPU2_REG_SYS_CTRL_INDEX]);
 
+	if (!mpp || fmt >= VDPU2_FMT_BUTT)
+		return -EINVAL;
+
 	ret = mpp_translate_reg_address(session, &task->mpp_task,
-					fmt, task->reg, &task->off_inf);
+					&mpp->var->trans_info[fmt],
+					task->reg, &task->off_inf);
 	if (ret)
 		return ret;
 
 	if (likely(fmt == VDPU2_FMT_H264D)) {
 		int fd;
-		u32 offset;
-		dma_addr_t iova = 0;
+		u64 offset = 0;
 		struct mpp_mem_region *mem_region = NULL;
 		int idx = VDPU2_REG_DIR_MV_BASE_INDEX;
 
@@ -226,20 +231,23 @@ static int vdpu_process_reg_fd(struct mpp_session *session,
 			fd = task->reg[idx] & 0x3ff;
 			offset = task->reg[idx] >> 10 << 4;
 		}
+		offset += mpp_query_reg_offset_info(&task->off_inf, idx);
 		mem_region = mpp_task_attach_fd(&task->mpp_task, fd);
 		if (IS_ERR(mem_region)) {
 			mpp_err("reg[%3d]: %08x fd %d attach failed\n",
 				idx, task->reg[idx], fd);
-			return -EFAULT;
+			return -EINVAL;
+		}
+		if (offset > mem_region->len) {
+			mpp_err("reg[%3d]: fd %d offset %llu over buffer len %lx\n",
+				idx, fd, offset, mem_region->len);
+			return -EINVAL;
 		}
 
-		iova = mem_region->iova;
-		mpp_debug(DEBUG_IOMMU, "DMV[%3d]: %3d => %pad + offset %10d\n",
-			  idx, fd, &iova, offset);
-		task->reg[idx] = iova + offset;
+		mpp_debug(DEBUG_IOMMU, "DMV[%3d]: %3d => %pad + offset %llu\n",
+			  idx, fd, &mem_region->iova, offset);
+		task->reg[idx] = mem_region->iova + offset;
 	}
-	mpp_translate_reg_offset_info(&task->mpp_task,
-				      &task->off_inf, task->reg);
 	return 0;
 }
 
@@ -265,7 +273,7 @@ static int vdpu_extract_task_msg(struct vdpu_task *task,
 			ret = mpp_check_req(req, 0, sizeof(task->reg),
 					    off_s, off_e);
 			if (ret)
-				continue;
+				return ret;
 			if (copy_from_user((u8 *)task->reg + req->offset,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -285,7 +293,9 @@ static int vdpu_extract_task_msg(struct vdpu_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;

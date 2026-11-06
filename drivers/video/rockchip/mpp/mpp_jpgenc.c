@@ -165,16 +165,14 @@ static struct mpp_trans_info jpgenc_v1_trans[] = {
 
 static int jpgenc_process_reg_fd(struct mpp_session *session, struct jpgenc_task *task)
 {
-	int ret = 0;
+	struct mpp_dev *mpp = mpp_get_task_used_device(&task->mpp_task, session);
 
-	ret = mpp_translate_reg_address(session, &task->mpp_task,
-					JPGENC_FMT_DEFAULT, task->reg, &task->off_inf);
+	if (!mpp)
+		return -EINVAL;
 
-	if (ret)
-		return ret;
-
-	mpp_translate_reg_offset_info(&task->mpp_task, &task->off_inf, task->reg);
-	return 0;
+	return mpp_translate_reg_address(session, &task->mpp_task,
+					&mpp->var->trans_info[JPGENC_FMT_DEFAULT],
+					task->reg, &task->off_inf);
 }
 
 static int jpgenc_extract_task_msg(struct jpgenc_task *task, struct mpp_task_msgs *msgs)
@@ -198,7 +196,7 @@ static int jpgenc_extract_task_msg(struct jpgenc_task *task, struct mpp_task_msg
 			ret = mpp_check_req(req, 0, sizeof(task->reg), off_s, off_e);
 
 			if (ret)
-				continue;
+				return ret;
 
 			if (copy_from_user((u8 *)task->reg + req->offset, req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -218,7 +216,9 @@ static int jpgenc_extract_task_msg(struct jpgenc_task *task, struct mpp_task_msg
 			memcpy(&task->r_reqs[task->r_req_cnt++], req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
@@ -412,7 +412,7 @@ static int jpgenc_procfs_init(struct mpp_dev *mpp)
 	mpp_procfs_create_u32("hclk", 0644, enc->procfs, &enc->hclk_info.debug_rate_hz);
 	mpp_procfs_create_u32("session_buffers", 0644, enc->procfs, &mpp->session_max_buffers);
 	mpp_procfs_create_u32("link_mode", 0644, enc->procfs, &enc->link_mode);
-	proc_create_single_data("sessions-info", 0444, enc->procfs, jpgenc_show_session_info, mpp);
+	proc_create_single_data("sessions-info", 0400, enc->procfs, jpgenc_show_session_info, mpp);
 
 	mpp_debug_leave();
 	return 0;

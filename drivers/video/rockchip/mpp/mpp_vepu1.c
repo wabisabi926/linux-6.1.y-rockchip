@@ -60,6 +60,7 @@
 #define VEPU1_FMT_VP8E			(1)
 #define VEPU1_FMT_JPEGE			(2)
 #define VEPU1_FMT_H264E			(3)
+#define VEPU1_FMT_BUTT			(4)
 
 #define VEPU1_REG_CLR_CACHE_BASE	0xc10
 
@@ -125,7 +126,7 @@ static const u16 trans_tbl_vp8e[] = {
 	5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 26, 51, 52, 58, 59, 71
 };
 
-static struct mpp_trans_info trans_rk_vepu1[] = {
+static struct mpp_trans_info trans_rk_vepu1[VEPU1_FMT_BUTT] = {
 	[VEPU1_FMT_RESERVED] = {
 		.count = 0,
 		.table = NULL,
@@ -148,18 +149,15 @@ static int vepu_process_reg_fd(struct mpp_session *session,
 			       struct vepu_task *task,
 			       struct mpp_task_msgs *msgs)
 {
-	int ret = 0;
+	struct mpp_dev *mpp = mpp_get_task_used_device(&task->mpp_task, session);
 	int fmt = VEPU1_GET_FORMAT(task->reg[VEPU1_REG_ENC_EN_INDEX]);
 
-	ret = mpp_translate_reg_address(session, &task->mpp_task,
-					fmt, task->reg, &task->off_inf);
-	if (ret)
-		return ret;
+	if (!mpp || fmt >= VEPU1_FMT_BUTT)
+		return -EINVAL;
 
-	mpp_translate_reg_offset_info(&task->mpp_task,
-				      &task->off_inf, task->reg);
-
-	return 0;
+	return mpp_translate_reg_address(session, &task->mpp_task,
+					&mpp->var->trans_info[fmt],
+					task->reg, &task->off_inf);
 }
 
 static int vepu_extract_task_msg(struct vepu_task *task,
@@ -184,7 +182,7 @@ static int vepu_extract_task_msg(struct vepu_task *task,
 			ret = mpp_check_req(req, 0, sizeof(task->reg),
 					    off_s, off_e);
 			if (ret)
-				continue;
+				return ret;
 			if (copy_from_user((u8 *)task->reg + req->offset,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -204,7 +202,9 @@ static int vepu_extract_task_msg(struct vepu_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
@@ -574,7 +574,7 @@ static int vepu_procfs_init(struct mpp_dev *mpp)
 	mpp_procfs_create_u32("session_buffers", 0644,
 			      enc->procfs, &mpp->session_max_buffers);
 	/* for show session info */
-	proc_create_single_data("sessions-info", 0444,
+	proc_create_single_data("sessions-info", 0400,
 				enc->procfs, vepu_show_session_info, mpp);
 
 	return 0;

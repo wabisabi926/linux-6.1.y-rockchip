@@ -232,18 +232,19 @@ static struct mpp_trans_info trans_av1dec[] = {
 };
 
 static bool req_over_class(struct mpp_request *req,
-			   struct av1dec_task *task, int class)
+			   struct av1dec_task *task, u32 class)
 {
 	bool ret;
-	u32 base_s, base_e, req_e;
+	u64 req_e;
+	u32 base_s, base_e;
 	struct av1dec_hw_info *hw = task->hw_info;
 
-	if (class > hw->reg_class_num)
+	if (class >= hw->reg_class_num)
 		return false;
 
 	base_s = hw->reg_class[class].base_s;
 	base_e = hw->reg_class[class].base_e;
-	req_e = req->offset + req->size - sizeof(u32);
+	req_e = (u64)req->offset + req->size - sizeof(u32);
 
 	ret = (req->offset <= base_e && req_e >= base_s) ? true : false;
 
@@ -277,24 +278,26 @@ static int av1dec_alloc_reg_class(struct av1dec_task *task)
 	return 0;
 }
 
-static int av1dec_update_req(struct av1dec_task *task, int class,
+static int av1dec_update_req(struct av1dec_task *task, u32 class,
 			     struct mpp_request *req_in,
 			     struct mpp_request *req_out)
 {
-	u32 base_s, base_e, req_e, s, e;
+	u64 req_e;
+	u32 base_s, base_e, s;
 	struct av1dec_hw_info *hw = task->hw_info;
 
-	if (class > hw->reg_class_num)
+	if (class >= hw->reg_class_num)
 		return -EINVAL;
 
 	base_s = hw->reg_class[class].base_s;
 	base_e = hw->reg_class[class].base_e;
-	req_e = req_in->offset + req_in->size - sizeof(u32);
+	req_e = (u64)req_in->offset + req_in->size - sizeof(u32);
 	s = max(req_in->offset, base_s);
-	e = min(req_e, base_e);
+	if (req_e > base_e)
+		req_e = base_e;
 
 	req_out->offset = s;
-	req_out->size = e - s + sizeof(u32);
+	req_out->size = req_e - s + sizeof(u32);
 	req_out->data = (u8 *)req_in->data + (s - req_in->offset);
 	mpp_debug(DEBUG_TASK_INFO, "req_out->offset=%08x, req_out->size=%d\n",
 		  req_out->offset, req_out->size);
@@ -322,6 +325,12 @@ static int av1dec_extract_task_msg(struct av1dec_task *task,
 		if (!req->size)
 			continue;
 
+		if (req->size % sizeof(u32)) {
+			mpp_err("error: req_size %x\n", req->size);
+			ret = -EINVAL;
+			goto fail;
+		}
+
 		switch (req->cmd) {
 		case MPP_CMD_SET_REG_WRITE: {
 			u32 class;
@@ -332,12 +341,21 @@ static int av1dec_extract_task_msg(struct av1dec_task *task,
 				if (!req_over_class(req, task, class))
 					continue;
 				mpp_debug(DEBUG_TASK_INFO, "found write_calss %d\n", class);
+				/* one entry per class per request, array holds MPP_MAX_MSG_NUM */
+				if (task->w_req_cnt >= MPP_MAX_MSG_NUM) {
+					mpp_err("w_req_cnt %u is full\n",
+						task->w_req_cnt);
+					ret = -EINVAL;
+					goto fail;
+				}
 				wreq = &task->w_reqs[task->w_req_cnt];
-				av1dec_update_req(task, class, req, wreq);
+				ret = av1dec_update_req(task, class, req, wreq);
+				if (ret)
+					goto fail;
 
 				base = task->reg_class[class].base;
 				regs = (u32 *)task->reg_class[class].data;
-				regs += MPP_BASE_TO_IDX(req->offset - base);
+				regs += MPP_BASE_TO_IDX(wreq->offset - base);
 				if (copy_from_user(regs, wreq->data, wreq->size)) {
 					mpp_err("copy_from_user fail, offset %08x\n", wreq->offset);
 					ret = -EIO;
@@ -354,13 +372,23 @@ static int av1dec_extract_task_msg(struct av1dec_task *task,
 				if (!req_over_class(req, task, class))
 					continue;
 				mpp_debug(DEBUG_TASK_INFO, "found read_calss %d\n", class);
+				if (task->r_req_cnt >= MPP_MAX_MSG_NUM) {
+					mpp_err("r_req_cnt %u is full\n",
+						task->r_req_cnt);
+					ret = -EINVAL;
+					goto fail;
+				}
 				rreq = &task->r_reqs[task->r_req_cnt];
-				av1dec_update_req(task, class, req, rreq);
+				ret = av1dec_update_req(task, class, req, rreq);
+				if (ret)
+					goto fail;
 				task->r_req_cnt++;
 			}
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				goto fail;
 		} break;
 		default:
 			break;
@@ -410,35 +438,61 @@ static void *av1dec_alloc_task(struct mpp_session *session,
 	/* process fd in register */
 	if (!(msgs->flags & MPP_FLAGS_REG_FD_NO_TRANS)) {
 		int cnt;
+		u32 region_from;
 		const u16 *tbl;
 		u32 offset;
 		struct av1dec_hw_info *hw = task->hw_info;
 
 		for (i = 0; i < task->w_req_cnt; i++) {
 			struct mpp_request *req = &task->w_reqs[i];
+			u32 t;
 
-			for (i = 0; i < hw->trans_class_num; i++) {
-				u32 class = hw->trans_class[i].class;
-				u32 fmt = hw->trans_class[i].trans_fmt;
-				u32 *reg = task->reg_class[class].data;
-				u32 base_idx = MPP_BASE_TO_IDX(task->reg_class[class].base);
+			for (t = 0; t < hw->trans_class_num; t++) {
+				u32 class = hw->trans_class[t].class;
+				u32 fmt = hw->trans_class[t].trans_fmt;
+				u32 *reg;
+				u32 base_idx;
 
-				if (!req_over_class(req, task, i))
+				if (!req_over_class(req, task, class))
 					continue;
+				reg = task->reg_class[class].data;
+				base_idx = MPP_BASE_TO_IDX(task->reg_class[class].base);
 				mpp_debug(DEBUG_TASK_INFO, "class=%d, base_idx=%d\n",
 					  class, base_idx);
 				if (!reg)
 					continue;
 
-				ret = mpp_translate_reg_address(session, mpp_task, fmt, reg, NULL);
+				region_from = mpp_task->mem_count;
+				ret = mpp_translate_reg_address(session, mpp_task,
+								&mpp->var->trans_info[fmt],
+								reg, NULL);
 				if (ret)
 					goto fail;
 
 				cnt = mpp->var->trans_info[fmt].count;
 				tbl = mpp->var->trans_info[fmt].table;
 				for (j = 0; j < cnt; j++) {
+					struct mpp_mem_region *mem_region;
+					u64 total;
+
 					offset = mpp_query_reg_offset_info(&task->off_inf,
 									tbl[j] + base_idx);
+					if (!offset)
+						continue;
+
+					mem_region = mpp_task_find_region_by_reg(mpp_task, tbl[j],
+										region_from);
+					if (!mem_region) {
+						mpp_err("reg[%d]: offset %u without buffer\n",
+							tbl[j], offset);
+						goto fail;
+					}
+					total = (u64)(reg[tbl[j]] - mem_region->iova) + offset;
+					if (total > mem_region->len) {
+						mpp_err("reg[%d]: offset %llu over buffer len %lx\n",
+							tbl[j], total, mem_region->len);
+						goto fail;
+					}
 					mpp_debug(DEBUG_IOMMU,
 						"reg[%d] + offset %d\n", tbl[j] + base_idx, offset);
 					reg[tbl[j]] += offset;

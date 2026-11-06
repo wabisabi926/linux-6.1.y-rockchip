@@ -342,6 +342,8 @@ struct mpp_session {
 	struct mpp_service *srv;
 	struct mpp_dev *mpp;
 	struct mpp_dma_session *dma;
+	/* lock for session init/reset and dma session lifecycle */
+	struct mutex lock_session;
 
 	/* lock for session task pending list */
 	struct mutex pending_lock;
@@ -351,9 +353,6 @@ struct mpp_session {
 	pid_t pid;
 	atomic_t task_count;
 	atomic_t release_request;
-	/* trans info set by user */
-	int trans_count;
-	u16 trans_table[MPP_MAX_REG_TRANS_NUM];
 	u32 msg_flags;
 	/* link to mpp_service session_list */
 	struct list_head service_link;
@@ -630,18 +629,19 @@ struct mpp_taskqueue *mpp_taskqueue_init(struct device *dev);
 struct mpp_mem_region *
 mpp_task_attach_fd(struct mpp_task *task, int fd);
 int mpp_translate_reg_address(struct mpp_session *session,
-			      struct mpp_task *task, int fmt,
+			      struct mpp_task *task,
+			      struct mpp_trans_info *trans,
 			      u32 *reg, struct reg_offset_info *off_inf);
 
-int mpp_check_req(struct mpp_request *req, int base,
-		  int max_size, u32 off_s, u32 off_e);
+struct mpp_mem_region *
+mpp_task_find_region_by_reg(struct mpp_task *task, u32 reg_idx,
+			    u32 region_from);
+int mpp_check_req(struct mpp_request *req, u32 base,
+		  u32 max_size, u32 off_s, u32 off_e);
 int mpp_extract_reg_offset_info(struct reg_offset_info *off_inf,
 				struct mpp_request *req);
 int mpp_query_reg_offset_info(struct reg_offset_info *off_inf,
 			      u32 index);
-int mpp_translate_reg_offset_info(struct mpp_task *task,
-				  struct reg_offset_info *off_inf,
-				  u32 *reg);
 int mpp_task_init(struct mpp_session *session,
 		  struct mpp_task *task);
 int mpp_task_finish(struct mpp_session *session,

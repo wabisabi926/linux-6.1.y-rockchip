@@ -53,6 +53,7 @@
 #define VEPU2_FMT_VP8E				(1)
 #define VEPU2_FMT_JPEGE				(2)
 #define VEPU2_FMT_H264E				(3)
+#define VEPU2_FMT_BUTT				(4)
 
 #define VEPU2_REG_MB_CTRL			0x1a0
 #define VEPU2_REG_MB_CTRL_INDEX			(104)
@@ -160,7 +161,7 @@ static const u16 trans_tbl_vp8e[] = {
 	76, 77, 78, 80, 81, 106, 108,
 };
 
-static struct mpp_trans_info trans_rk_vepu2[] = {
+static struct mpp_trans_info trans_rk_vepu2[VEPU2_FMT_BUTT] = {
 	[VEPU2_FMT_RESERVED] = {
 		.count = 0,
 		.table = NULL,
@@ -185,7 +186,11 @@ static int vepu_process_reg_fd(struct mpp_session *session,
 {
 	int ret;
 	int fd_bs;
+	struct mpp_dev *mpp = mpp_get_task_used_device(&task->mpp_task, session);
 	int fmt = VEPU2_GET_FORMAT(task->reg[VEPU2_REG_ENC_EN_INDEX]);
+
+	if (!mpp || fmt >= VEPU2_FMT_BUTT)
+		return -EINVAL;
 
 	if (session->msg_flags & MPP_FLAGS_REG_NO_OFFSET)
 		fd_bs = task->reg[VEPU2_REG_OUT_INDEX];
@@ -193,19 +198,24 @@ static int vepu_process_reg_fd(struct mpp_session *session,
 		fd_bs = task->reg[VEPU2_REG_OUT_INDEX] & 0x3ff;
 
 	ret = mpp_translate_reg_address(session, &task->mpp_task,
-					fmt, task->reg, &task->off_inf);
+					&mpp->var->trans_info[fmt],
+					task->reg, &task->off_inf);
 	if (ret)
 		return ret;
 
-	mpp_translate_reg_offset_info(&task->mpp_task,
-				      &task->off_inf, task->reg);
 
 	if (fmt == VEPU2_FMT_JPEGE) {
 		struct mpp_dma_buffer *bs_buf = mpp_dma_find_buffer_fd(session->dma, fd_bs);
 
 		task->offset_bs = mpp_query_reg_offset_info(&task->off_inf, VEPU2_REG_OUT_INDEX);
-		if (bs_buf && task->offset_bs > 0)
+		if (bs_buf && task->offset_bs > 0) {
+			if (task->offset_bs >= bs_buf->size) {
+				mpp_err("bs offset %u over buffer size %lx\n",
+					task->offset_bs, bs_buf->size);
+				return -EINVAL;
+			}
 			mpp_dma_buf_sync(bs_buf, 0, task->offset_bs, DMA_TO_DEVICE, false);
+		}
 		task->bs_buf = bs_buf;
 	}
 
@@ -234,7 +244,7 @@ static int vepu_extract_task_msg(struct vepu_task *task,
 			ret = mpp_check_req(req, 0, sizeof(task->reg),
 					    off_s, off_e);
 			if (ret)
-				continue;
+				return ret;
 			if (copy_from_user((u8 *)task->reg + req->offset,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -254,7 +264,9 @@ static int vepu_extract_task_msg(struct vepu_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
@@ -705,7 +717,7 @@ static int vepu_procfs_init(struct mpp_dev *mpp)
 	mpp_procfs_create_u32("session_buffers", 0644,
 			      enc->procfs, &mpp->session_max_buffers);
 	/* for show session info */
-	proc_create_single_data("sessions-info", 0444,
+	proc_create_single_data("sessions-info", 0400,
 				enc->procfs, vepu_show_session_info, mpp);
 
 	return 0;

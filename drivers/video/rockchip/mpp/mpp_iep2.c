@@ -287,6 +287,11 @@ static int iep2_process_reg_fd(struct mpp_session *session,
 
 		if (session->msg_flags & MPP_FLAGS_REG_NO_OFFSET)
 			offset = mpp_query_reg_offset_info(&task->off_inf, mem_region->reg_idx);
+		if (offset > mem_region->len) {
+			mpp_err("reg[%3d]: fd %d offset %u over buffer len %lx\n",
+				mem_region->reg_idx, usr_fd, offset, mem_region->len);
+			return -EINVAL;
+		}
 
 		mpp_debug(DEBUG_IOMMU, "reg[%3d]: %3d => %pad + offset %u\n",
 			  iep2_addr_rnum[i], usr_fd, &mem_region->iova, offset);
@@ -307,6 +312,7 @@ static int iep2_extract_task_msg(struct iep_task *task,
 				 struct mpp_task_msgs *msgs)
 {
 	u32 i;
+	int ret;
 	struct mpp_request *req;
 
 	for (i = 0; i < msgs->req_cnt; i++) {
@@ -316,18 +322,34 @@ static int iep2_extract_task_msg(struct iep_task *task,
 
 		switch (req->cmd) {
 		case MPP_CMD_SET_REG_WRITE: {
+			if (req->size > sizeof(task->params)) {
+				mpp_err("error: req_size %x\n", req->size);
+				return -EINVAL;
+			}
 			if (copy_from_user(&task->params,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user params failed\n");
 				return -EIO;
 			}
+			task->params.osd_area_num =
+				min_t(u32, task->params.osd_area_num,
+				      ARRAY_SIZE(task->params.osd_x_sta));
+			task->params.osd_pos_limit_num =
+				min_t(u32, task->params.osd_pos_limit_num,
+				      ARRAY_SIZE(task->params.osd_limit_area));
 		} break;
 		case MPP_CMD_SET_REG_READ: {
+			if (req->size > sizeof(task->output)) {
+				mpp_err("error: req_size %x\n", req->size);
+				return -EINVAL;
+			}
 			memcpy(&task->r_reqs[task->r_req_cnt++],
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
@@ -525,10 +547,12 @@ static void iep2_config(struct mpp_dev *mpp, struct iep_task *task)
 static void iep2_osd_cfg(struct mpp_dev *mpp, struct iep_task *task)
 {
 	struct iep2_params *hw_cfg = &task->params;
-	int i;
+	u32 i;
 	u32 reg;
+	u32 osd_area_num = min_t(u32, hw_cfg->osd_area_num,
+				 ARRAY_SIZE(hw_cfg->osd_x_sta));
 
-	for (i = 0; i < hw_cfg->osd_area_num; ++i) {
+	for (i = 0; i < osd_area_num; ++i) {
 		reg = IEP2_REG_OSD_X_STA(hw_cfg->osd_x_sta[i])
 			| IEP2_REG_OSD_X_END(hw_cfg->osd_x_end[i])
 			| IEP2_REG_OSD_Y_STA(hw_cfg->osd_y_sta[i])
@@ -739,6 +763,8 @@ static int iep2_finish(struct mpp_dev *mpp,
 	output->dect_ff_nz = mpp_read(mpp, IEP2_REG_RO_FF_COMB_NZ);
 	output->dect_ff_comb_f = mpp_read(mpp, IEP2_REG_RO_FF_COMB_F);
 	output->dect_osd_cnt = mpp_read(mpp, IEP2_REG_RO_OSD_NUM);
+	output->dect_osd_cnt = min_t(u32, output->dect_osd_cnt,
+				     ARRAY_SIZE(output->x_sta));
 
 	reg = mpp_read(mpp, IEP2_REG_RO_COMB_CNT);
 	output->out_comb_cnt = IEP2_REG_RO_OUT_COMB_CNT(reg);
@@ -767,7 +793,6 @@ static int iep2_result(struct mpp_dev *mpp,
 	struct mpp_request *req;
 	struct iep_task *task = to_iep_task(mpp_task);
 
-	/* FIXME may overflow the kernel */
 	for (i = 0; i < task->r_req_cnt; i++) {
 		req = &task->r_reqs[i];
 
@@ -939,7 +964,7 @@ static int iep2_init(struct mpp_dev *mpp)
 	}
 
 	/* for mmu pagefault */
-	iep->aux_page = alloc_page(GFP_KERNEL | GFP_DMA32);
+	iep->aux_page = alloc_page(GFP_KERNEL | __GFP_ZERO | GFP_DMA32);
 	if (!iep->aux_page) {
 		dev_err(mpp->dev, "allocate a page for auxiliary usage\n");
 		return -ENOMEM;

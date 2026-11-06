@@ -68,7 +68,8 @@ enum RKVENC_FORMAT_TYPE {
 	RKVENC_FMT_H265E	= RKVENC_FMT_BASE + 1,
 	RKVENC_FMT_JPEGE	= RKVENC_FMT_BASE + 2,
 
-	RKVENC_FMT_OSD_BASE	= 0x1000,
+	/* flag bit for the OSD variants, keeps the id layout dense */
+	RKVENC_FMT_OSD_BASE	= 0x0004,
 	RKVENC_FMT_H264E_OSD	= RKVENC_FMT_OSD_BASE + 0,
 	RKVENC_FMT_H265E_OSD	= RKVENC_FMT_OSD_BASE + 1,
 	RKVENC_FMT_JPEGE_OSD	= RKVENC_FMT_OSD_BASE + 2,
@@ -99,6 +100,7 @@ enum RKVENC_VEPU_TYPE {
 	RKVENC_VEPU_540C	= 1,
 	RKVENC_VEPU_510		= 2,
 	RKVENC_VEPU_511		= 3,
+	RKVENC_VEPU_511A	= 4,
 	RKVENC_VEPU_BUTT,
 };
 
@@ -577,6 +579,80 @@ static struct rkvenc_hw_info rkvenc_511_hw_info = {
 	.vepu_type =  RKVENC_VEPU_511,
 };
 
+static struct rkvenc_hw_info rkvenc_511a_hw_info = {
+	.hw = {
+		.reg_num = 254,
+		.reg_id = 0,
+		.reg_en = 4,
+		.reg_start = 160,
+		.reg_end = 253,
+	},
+	.reg_class = RKVENC_CLASS_BUTT,
+	.reg_msg[RKVENC_CLASS_BASE] = {
+		.base_s = 0x0000,
+		.base_e = 0x0120,
+	},
+	.reg_msg[RKVENC_CLASS_PIC] = {
+		.base_s = 0x0270,
+		.base_e = 0x0538,
+	},
+	.reg_msg[RKVENC_CLASS_RC] = {
+		.base_s = 0x1000,
+		.base_e = 0x1160,
+	},
+	.reg_msg[RKVENC_CLASS_PAR] = {
+		.base_s = 0x1700,
+		.base_e = 0x19cc,
+	},
+	.reg_msg[RKVENC_CLASS_SQI] = {
+		.base_s = 0x2000,
+		.base_e = 0x216c,
+	},
+	.reg_msg[RKVENC_CLASS_SCL] = {
+		.base_s = 0x2200,
+		.base_e = 0x2e40,
+	},
+	.reg_msg[RKVENC_CLASS_OSD] = {
+		.base_s = 0x3000,
+		.base_e = 0x3264,
+	},
+	.reg_msg[RKVENC_CLASS_ST] = {
+		.base_s = 0x4000,
+		.base_e = 0x424c,
+	},
+	.reg_msg[RKVENC_CLASS_DEBUG] = {
+		.base_s = 0x5000,
+		.base_e = 0x523c,
+	},
+	.fd_class = RKVENC_CLASS_FD_BUTT,
+	.fd_reg[RKVENC_CLASS_FD_BASE] = {
+		.class = RKVENC_CLASS_PIC,
+		.base_fmt = RKVENC_FMT_BASE,
+	},
+	.fd_reg[RKVENC_CLASS_FD_OSD] = {
+		.class = RKVENC_CLASS_OSD,
+		.base_fmt = RKVENC_FMT_OSD_BASE,
+	},
+	.fmt_reg = {
+		.class = RKVENC_CLASS_PIC,
+		.base = 0x0300,
+		.bitpos = 0,
+		.bitlen = 2,
+	},
+	.enc_start_base = 0x0010,
+	.enc_clr_base = 0x0014,
+	.int_en_base = 0x0020,
+	.int_mask_base = 0x0024,
+	.int_clr_base = 0x0028,
+	.int_sta_base = 0x002c,
+	.enc_wdg_base = 0x0038,
+
+	.err_mask = 0x27d0,
+	.enc_rsl = 0x0310,
+	.dcsh_class_ofst = 0,
+	.vepu_type = RKVENC_VEPU_511A,
+};
+
 static struct rkvenc_hw_info rkvenc_540c_hw_info = {
 	.hw = {
 		.reg_num = 254,
@@ -717,7 +793,7 @@ static const u32 rkvenc2_timeout_thd_by_rsl[5][2] = {
 	{15360*8640,	800}
 };
 
-static struct mpp_trans_info trans_rkvenc_v2[] = {
+static struct mpp_trans_info trans_rkvenc_v2[RKVENC_FMT_BUTT] = {
 	[RKVENC_FMT_H264E] = {
 		.count = ARRAY_SIZE(trans_tbl_h264e_v2),
 		.table = trans_tbl_h264e_v2,
@@ -736,7 +812,7 @@ static struct mpp_trans_info trans_rkvenc_v2[] = {
 	},
 };
 
-static struct mpp_trans_info trans_rkvenc_540c[] = {
+static struct mpp_trans_info trans_rkvenc_540c[RKVENC_FMT_BUTT] = {
 	[RKVENC_FMT_H264E] = {
 		.count = ARRAY_SIZE(trans_tbl_h264e_540c),
 		.table = trans_tbl_h264e_540c,
@@ -763,7 +839,34 @@ static struct mpp_trans_info trans_rkvenc_540c[] = {
 	},
 };
 
-static struct mpp_trans_info trans_rkvenc_511[] = {
+static struct mpp_trans_info trans_rkvenc_511[RKVENC_FMT_BUTT] = {
+	[RKVENC_FMT_H264E] = {
+		.count = ARRAY_SIZE(trans_tbl_h264e_540c),
+		.table = trans_tbl_h264e_540c,
+	},
+	[RKVENC_FMT_H264E_OSD] = {
+		.count = ARRAY_SIZE(trans_tbl_h264e_540c_osd),
+		.table = trans_tbl_h264e_540c_osd,
+	},
+	[RKVENC_FMT_H265E] = {
+		.count = ARRAY_SIZE(trans_tbl_h265e_540c),
+		.table = trans_tbl_h265e_540c,
+	},
+	[RKVENC_FMT_H265E_OSD] = {
+		.count = ARRAY_SIZE(trans_tbl_h265e_540c_osd),
+		.table = trans_tbl_h265e_540c_osd,
+	},
+	[RKVENC_FMT_JPEGE] = {
+		.count = ARRAY_SIZE(trans_tbl_jpege),
+		.table = trans_tbl_jpege,
+	},
+	[RKVENC_FMT_JPEGE_OSD] = {
+		.count = ARRAY_SIZE(trans_tbl_jpege_osd),
+		.table = trans_tbl_jpege_osd,
+	},
+};
+
+static struct mpp_trans_info trans_rkvenc_511a[RKVENC_FMT_BUTT] = {
 	[RKVENC_FMT_H264E] = {
 		.count = ARRAY_SIZE(trans_tbl_h264e_540c),
 		.table = trans_tbl_h264e_540c,
@@ -796,12 +899,13 @@ static bool req_over_class(struct mpp_request *req,
 			   struct rkvenc_task *task, int class)
 {
 	bool ret;
-	u32 base_s, base_e, req_e;
+	u64 req_e;
+	u32 base_s, base_e;
 	struct rkvenc_hw_info *hw = task->hw_info;
 
 	base_s = hw->reg_msg[class].base_s;
 	base_e = hw->reg_msg[class].base_e;
-	req_e = req->offset + req->size - sizeof(u32);
+	req_e = (u64)req->offset + req->size - sizeof(u32);
 
 	ret = (req->offset <= base_e && req_e >= base_s) ? true : false;
 
@@ -846,17 +950,19 @@ static int rkvenc_update_req(struct rkvenc_task *task, int class,
 			     struct mpp_request *req_in,
 			     struct mpp_request *req_out)
 {
-	u32 base_s, base_e, req_e, s, e;
+	u64 req_e;
+	u32 base_s, base_e, s;
 	struct rkvenc_hw_info *hw = task->hw_info;
 
 	base_s = hw->reg_msg[class].base_s;
 	base_e = hw->reg_msg[class].base_e;
-	req_e = req_in->offset + req_in->size - sizeof(u32);
+	req_e = (u64)req_in->offset + req_in->size - sizeof(u32);
 	s = max(req_in->offset, base_s);
-	e = min(req_e, base_e);
+	if (req_e > base_e)
+		req_e = base_e;
 
 	req_out->offset = s;
-	req_out->size = e - s + sizeof(u32);
+	req_out->size = req_e - s + sizeof(u32);
 	req_out->data = (u8 *)req_in->data + (s - req_in->offset);
 
 	return 0;
@@ -877,7 +983,7 @@ static int rkvenc_get_class_msg(struct rkvenc_task *task,
 	for (i = 0; i < hw->reg_class; i++) {
 		base_s = hw->reg_msg[i].base_s;
 		base_e = hw->reg_msg[i].base_e;
-		if (addr >= base_s && addr < base_e) {
+		if (addr >= base_s && addr <= base_e) {
 			found = true;
 			msg->offset = base_s;
 			msg->size = task->reg[i].size;
@@ -899,7 +1005,7 @@ static u32 *rkvenc_get_class_reg(struct rkvenc_task *task, u32 addr)
 	for (i = 0; i < hw->reg_class; i++) {
 		base_s = hw->reg_msg[i].base_s;
 		base_e = hw->reg_msg[i].base_e;
-		if (addr >= base_s && addr < base_e) {
+		if (addr >= base_s && addr <= base_e) {
 			reg = (u8 *)task->reg[i].data + (addr - base_s);
 			break;
 		}
@@ -912,7 +1018,13 @@ static int rkvenc2_extract_rcb_info(struct rkvenc2_rcb_info *rcb_inf,
 				    struct mpp_request *req)
 {
 	int max_size = ARRAY_SIZE(rcb_inf->elem);
-	int cnt = req->size / sizeof(rcb_inf->elem[0]);
+	int cnt;
+
+	if (req->size % sizeof(rcb_inf->elem[0])) {
+		mpp_err("error: req_size %x\n", req->size);
+		return -EINVAL;
+	}
+	cnt = req->size / sizeof(rcb_inf->elem[0]);
 
 	if (req->size > sizeof(rcb_inf->elem)) {
 		mpp_err("count %d,max_size %d\n", cnt, max_size);
@@ -943,6 +1055,12 @@ static int rkvenc_extract_task_msg(struct mpp_session *session,
 		if (!req->size)
 			continue;
 
+		if (req->size % sizeof(u32)) {
+			mpp_err("error: req_size %x\n", req->size);
+			ret = -EINVAL;
+			goto fail;
+		}
+
 		switch (req->cmd) {
 		case MPP_CMD_SET_REG_WRITE: {
 			void *data;
@@ -952,13 +1070,23 @@ static int rkvenc_extract_task_msg(struct mpp_session *session,
 				if (!req_over_class(req, task, j))
 					continue;
 
+				/* one entry per class per request, array holds MPP_MAX_MSG_NUM */
+				if (task->w_req_cnt >= MPP_MAX_MSG_NUM) {
+					mpp_err("w_req_cnt %u is full\n",
+						task->w_req_cnt);
+					ret = -EINVAL;
+					goto fail;
+				}
+
 				ret = rkvenc_alloc_class_msg(task, j);
 				if (ret) {
 					mpp_err("alloc class msg %d fail.\n", j);
 					goto fail;
 				}
 				wreq = &task->w_reqs[task->w_req_cnt];
-				rkvenc_update_req(task, j, req, wreq);
+				ret = rkvenc_update_req(task, j, req, wreq);
+				if (ret)
+					goto fail;
 				data = rkvenc_get_class_reg(task, wreq->offset);
 				if (!data) {
 					mpp_err("get class reg fail, offset %08x\n", wreq->offset);
@@ -981,25 +1109,40 @@ static int rkvenc_extract_task_msg(struct mpp_session *session,
 				if (!req_over_class(req, task, j))
 					continue;
 
+				/* one entry per class per request, array holds MPP_MAX_MSG_NUM */
+				if (task->r_req_cnt >= MPP_MAX_MSG_NUM) {
+					mpp_err("r_req_cnt %u is full\n",
+						task->r_req_cnt);
+					ret = -EINVAL;
+					goto fail;
+				}
+
 				ret = rkvenc_alloc_class_msg(task, j);
 				if (ret) {
 					mpp_err("alloc class msg reg %d fail.\n", j);
 					goto fail;
 				}
 				rreq = &task->r_reqs[task->r_req_cnt];
-				rkvenc_update_req(task, j, req, rreq);
+				ret = rkvenc_update_req(task, j, req, rreq);
+				if (ret)
+					goto fail;
 				task->reg[j].valid = 1;
 				task->r_req_cnt++;
 			}
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				goto fail;
 		} break;
 		case MPP_CMD_SET_RCB_INFO: {
 			struct rkvenc2_session_priv *priv = session->priv;
 
-			if (priv)
-				rkvenc2_extract_rcb_info(&priv->rcb_inf, req);
+			if (priv) {
+				ret = rkvenc2_extract_rcb_info(&priv->rcb_inf, req);
+				if (ret)
+					goto fail;
+			}
 		} break;
 		default:
 			break;
@@ -1035,8 +1178,18 @@ static int rkvenc_task_get_format(struct mpp_dev *mpp,
 		return -EINVAL;
 
 	offset = hw->fmt_reg.base - class_base;
+	if ((size_t)offset + sizeof(u32) > class_size) {
+		mpp_err("fmt reg offset %u over class size %u\n",
+			offset, class_size);
+		return -EINVAL;
+	}
+	if (bitpos >= sizeof(u32) * 8 || bitlen >= sizeof(u32) * 8 ||
+	    bitlen > sizeof(u32) * 8 - bitpos) {
+		mpp_err("invalid fmt reg bitpos %u bitlen %u\n", bitpos, bitlen);
+		return -EINVAL;
+	}
 	val = class_reg[offset/sizeof(u32)];
-	task->fmt = (val >> bitpos) & ((1 << bitlen) - 1);
+	task->fmt = (val >> bitpos) & ((1u << bitlen) - 1);
 
 	return 0;
 }
@@ -1062,7 +1215,7 @@ static int rkvenc2_set_rcbbuf(struct mpp_dev *mpp, struct mpp_session *session,
 			rcb_size = rcb_inf->elem[i].size;
 
 			if (rcb_offset > enc->sram_size ||
-			    (rcb_offset + rcb_size) > enc->sram_used)
+			    rcb_size > enc->sram_used - rcb_offset)
 				continue;
 
 			mpp_debug(DEBUG_SRAM_INFO, "rcb: reg %d offset %d, size %d\n",
@@ -1117,7 +1270,9 @@ static void rkvenc2_check_split_task(struct mpp_dev *mpp, struct rkvenc_task *ta
 	u32 reg_enc_pic		= 0;
 	u32 reg_slt_split	= 0;
 
-	if (hw->vepu_type == RKVENC_VEPU_510) {
+	if (hw->vepu_type == RKVENC_VEPU_510 ||
+	    hw->vepu_type == RKVENC_VEPU_511 ||
+	    hw->vepu_type == RKVENC_VEPU_511A) {
 		reg_enc_pic = RKVENC510_REG_ENC_PIC;
 		reg_slt_split = RKVENC510_REG_SLI_SPLIT;
 	} else {
@@ -1175,24 +1330,36 @@ static void *rkvenc_alloc_task(struct mpp_session *session,
 	/* get format */
 	ret = rkvenc_task_get_format(mpp, task);
 	if (ret)
-		goto free_task;
+		goto fail;
 	/* process fd in register */
 	if (!(msgs->flags & MPP_FLAGS_REG_FD_NO_TRANS)) {
 		u32 i, j;
 		int cnt;
 		u32 off;
+		u32 region_from;
 		const u16 *tbl;
 		struct rkvenc_hw_info *hw = task->hw_info;
 		int fd_bs = -1;
 
+		if (task->fmt >= RKVENC_FMT_OSD_BASE) {
+			mpp_err("invalid task fmt %u\n", task->fmt);
+			goto fail;
+		}
+
 		for (i = 0; i < hw->fd_class; i++) {
 			u32 class = hw->fd_reg[i].class;
-			u32 fmt = hw->fd_reg[i].base_fmt + task->fmt;
+			u32 fmt = hw->fd_reg[i].base_fmt | task->fmt;
 			u32 *reg = task->reg[class].data;
 			u32 ss = hw->reg_msg[class].base_s / sizeof(u32);
 
 			if (!reg)
 				continue;
+
+			if (fmt >= RKVENC_FMT_BUTT ||
+			    !mpp->var->trans_info[fmt].table) {
+				mpp_err("invalid fmt %u on class %u\n", fmt, class);
+				goto fail;
+			}
 
 			if (fmt == RKVENC_FMT_JPEGE && class == RKVENC_CLASS_PIC && fd_bs == -1) {
 				int bs_index;
@@ -1203,14 +1370,36 @@ static void *rkvenc_alloc_task(struct mpp_session *session,
 									    bs_index + ss);
 			}
 
-			ret = mpp_translate_reg_address(session, mpp_task, fmt, reg, NULL);
+			region_from = mpp_task->mem_count;
+			ret = mpp_translate_reg_address(session, mpp_task,
+							&mpp->var->trans_info[fmt],
+							reg, NULL);
 			if (ret)
 				goto fail;
 
 			cnt = mpp->var->trans_info[fmt].count;
 			tbl = mpp->var->trans_info[fmt].table;
 			for (j = 0; j < cnt; j++) {
+				struct mpp_mem_region *mem_region;
+				u64 total;
+
 				off = mpp_query_reg_offset_info(&task->off_inf, tbl[j] + ss);
+				if (!off)
+					continue;
+
+				mem_region = mpp_task_find_region_by_reg(mpp_task, tbl[j],
+									region_from);
+				if (!mem_region) {
+					mpp_err("reg[%d]: offset %u without buffer\n",
+						tbl[j], off);
+					goto fail;
+				}
+				total = (u64)(reg[tbl[j]] - mem_region->iova) + off;
+				if (total > mem_region->len) {
+					mpp_err("reg[%d]: offset %llu over buffer len %lx\n",
+						tbl[j], total, mem_region->len);
+					goto fail;
+				}
 				mpp_debug(DEBUG_IOMMU, "reg[%d] + offset %d\n", tbl[j] + ss, off);
 				reg[tbl[j]] += off;
 			}
@@ -1220,8 +1409,14 @@ static void *rkvenc_alloc_task(struct mpp_session *session,
 			struct mpp_dma_buffer *bs_buf =
 					mpp_dma_find_buffer_fd(session->dma, fd_bs);
 
-			if (bs_buf && task->offset_bs > 0)
+			if (bs_buf && task->offset_bs > 0) {
+				if (task->offset_bs >= bs_buf->size) {
+					mpp_err("bs offset %u over buffer size %lx\n",
+						task->offset_bs, bs_buf->size);
+					goto fail;
+				}
 				mpp_dma_buf_sync(bs_buf, 0, task->offset_bs, DMA_TO_DEVICE, false);
+			}
 			task->bs_buf = bs_buf;
 		}
 	}
@@ -1887,9 +2082,11 @@ static int rkvenc_finish(struct mpp_dev *mpp, struct mpp_task *mpp_task)
 
 	if (task->bs_buf) {
 		u32 bs_size = mpp_read(mpp, 0x4064);
+		u64 len = (u64)bs_size + task->offset_bs;
 
-		mpp_dma_buf_sync(task->bs_buf, 0, bs_size + task->offset_bs,
-				 DMA_FROM_DEVICE, true);
+		if (len > task->bs_buf->size)
+			len = task->bs_buf->size;
+		mpp_dma_buf_sync(task->bs_buf, 0, (u32)len, DMA_FROM_DEVICE, true);
 	}
 
 	/* revert hack for irq status */
@@ -2119,7 +2316,7 @@ static int rkvenc_procfs_init(struct mpp_dev *mpp)
 	mpp_procfs_create_u32("session_buffers", 0644,
 			      enc->procfs, &mpp->session_max_buffers);
 	/* for show session info */
-	proc_create_single_data("sessions-info", 0444,
+	proc_create_single_data("sessions-info", 0400,
 				enc->procfs, rkvenc_show_session_info, mpp);
 
 	return 0;
@@ -2626,12 +2823,14 @@ static int rkvenc2_wait_result(struct mpp_session *session,
 	u32 task_id;
 	int ret = 0;
 
+	mutex_lock(&session->lock_session);
 	mutex_lock(&session->pending_lock);
 	task = list_first_entry_or_null(&session->pending_list,
 					struct mpp_task,
 					pending_link);
 	mutex_unlock(&session->pending_lock);
 	if (!task) {
+		mutex_unlock(&session->lock_session);
 		mpp_err("session %p pending list is empty!\n", session);
 		return -EIO;
 	}
@@ -2648,7 +2847,9 @@ task_done_ret:
 		if (ret == -ERESTARTSYS)
 			mpp_err("wait task break by signal in normal mode\n");
 
-		return rkvenc2_task_default_process(mpp, task);
+		ret = rkvenc2_task_default_process(mpp, task);
+		mutex_unlock(&session->lock_session);
+		return ret;
 
 	}
 
@@ -2659,6 +2860,7 @@ task_done_ret:
 									     &slice_info, 1));
 			if (ret == -ERESTARTSYS) {
 				mpp_err("wait task break by signal in slice all mode\n");
+				mutex_unlock(&session->lock_session);
 				return 0;
 			}
 			mpp_dbg_slice("task %d rd %3d len %d %s\n",
@@ -2674,6 +2876,7 @@ task_done_ret:
 
 	if (copy_from_user(&cfg, req->data, sizeof(cfg))) {
 		mpp_err("copy_from_user failed\n");
+		mutex_unlock(&session->lock_session);
 		return -EINVAL;
 	}
 
@@ -2687,6 +2890,7 @@ task_done_ret:
 								     &slice_info, 1));
 		if (ret == -ERESTARTSYS) {
 			mpp_err("wait task break by signal in slice one mode\n");
+			mutex_unlock(&session->lock_session);
 			return 0;
 		}
 		mpp_dbg_slice("core %d task %d rd %3d len %d %s\n", task_id,
@@ -2712,15 +2916,20 @@ task_done_ret:
 			goto task_done_ret;
 		}
 
-		if (cfg.count_ret >= cfg.count_max)
+		if (cfg.count_ret >= cfg.count_max) {
+			mutex_unlock(&session->lock_session);
 			return 0;
+		}
 
-		if (ret < 0)
+		if (ret < 0) {
+			mutex_unlock(&session->lock_session);
 			return ret;
+		}
 	} while (!ret);
 
 	rkvenc2_task_timeout_process(session, task);
 
+	mutex_unlock(&session->lock_session);
 	return ret;
 }
 
@@ -2811,6 +3020,14 @@ static const struct mpp_dev_var rkvenc_511_data = {
 	.dev_ops = &vepu540c_dev_ops_v2,
 };
 
+static const struct mpp_dev_var rkvenc_511a_data = {
+	.device_type = MPP_DEVICE_RKVENC,
+	.hw_info = &rkvenc_511a_hw_info.hw,
+	.trans_info = trans_rkvenc_511a,
+	.hw_ops = &rkvenc_hw_ops,
+	.dev_ops = &vepu540c_dev_ops_v2,
+};
+
 static const struct mpp_dev_var rkvenc_ccu_data = {
 	.device_type = MPP_DEVICE_RKVENC,
 	.hw_info = &rkvenc_v2_hw_info.hw,
@@ -2861,6 +3078,12 @@ static const struct of_device_id mpp_rkvenc_dt_match[] = {
 	{
 		.compatible = "rockchip,rkv-encoder-rk3562",
 		.data = &rkvenc_540c_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RK3572
+	{
+		.compatible = "rockchip,rkv-encoder-rk3572",
+		.data = &rkvenc_511a_data,
 	},
 #endif
 #ifdef CONFIG_CPU_RK3588

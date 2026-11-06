@@ -87,6 +87,7 @@
 #define RKVDEC_FMT_H265D		(0)
 #define RKVDEC_FMT_H264D		(1)
 #define RKVDEC_FMT_VP9D			(2)
+#define RKVDEC_V1_FMT_BUTT		(3)
 
 #define RKVDEC_REG_RLC_BASE		0x010
 #define RKVDEC_REG_RLC_BASE_INDEX	(4)
@@ -232,14 +233,14 @@ static const u16 trans_tbl_vp9d[] = {
 	4, 6, 7, 11, 12, 13, 14, 15, 16
 };
 
-static struct mpp_trans_info rk_hevcdec_trans[] = {
+static struct mpp_trans_info rk_hevcdec_trans[RKVDEC_V1_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_tbl_h265d),
 		.table = trans_tbl_h265d,
 	},
 };
 
-static struct mpp_trans_info rkvdec_v1_trans[] = {
+static struct mpp_trans_info rkvdec_v1_trans[RKVDEC_V1_FMT_BUTT] = {
 	[RKVDEC_FMT_H265D] = {
 		.count = ARRAY_SIZE(trans_tbl_h265d),
 		.table = trans_tbl_h265d,
@@ -455,8 +456,8 @@ static int devfreq_notifier_call(struct notifier_block *nb,
  * address then copy it all pps buffer.
  */
 static int fill_scaling_list_pps(struct rkvdec_task *task,
-				 int fd, int offset, int count,
-				 int pps_info_size, int sub_addr_offset)
+				 int fd, u32 offset, u32 count,
+				 u32 pps_info_size, u32 sub_addr_offset)
 {
 	struct dma_buf *dmabuf = NULL;
 	struct iosys_map map;
@@ -464,11 +465,25 @@ static int fill_scaling_list_pps(struct rkvdec_task *task,
 	u32 scaling_fd = 0;
 	int ret = 0;
 	u32 base = sub_addr_offset;
+	u64 need;
+
+	if (!count)
+		return -EINVAL;
+
+	need = (u64)offset + sub_addr_offset +
+	       (u64)(count - 1) * pps_info_size + sizeof(scaling_fd);
 
 	dmabuf = dma_buf_get(fd);
 	if (IS_ERR_OR_NULL(dmabuf)) {
 		mpp_err("invliad pps buffer\n");
 		return -ENOENT;
+	}
+
+	if (need > dmabuf->size) {
+		mpp_err("pps offset %u need %llu over buffer size %llu\n",
+			offset, need, (u64)dmabuf->size);
+		ret = -EINVAL;
+		goto access_failed;
 	}
 
 	ret = dma_buf_begin_cpu_access(dmabuf, DMA_FROM_DEVICE);
@@ -540,10 +555,10 @@ static int rkvdec_process_scl_fd(struct mpp_session *session,
 
 	pps_offset += mpp_query_reg_offset_info(&task->off_inf, idx);
 	if (pps_fd > 0) {
-		int pps_info_offset;
-		int pps_info_count;
-		int pps_info_size;
-		int scaling_list_addr_offset;
+		u32 pps_info_offset;
+		u32 pps_info_count;
+		u32 pps_info_size;
+		u32 scaling_list_addr_offset;
 
 		switch (fmt) {
 		case RKVDEC_FMT_H264D:
@@ -569,13 +584,13 @@ static int rkvdec_process_scl_fd(struct mpp_session *session,
 		mpp_debug(DEBUG_PPS_FILL,
 			  "scaling list filling parameter:\n");
 		mpp_debug(DEBUG_PPS_FILL,
-			  "pps_info_offset %d\n", pps_info_offset);
+			  "pps_info_offset %u\n", pps_info_offset);
 		mpp_debug(DEBUG_PPS_FILL,
-			  "pps_info_count  %d\n", pps_info_count);
+			  "pps_info_count  %u\n", pps_info_count);
 		mpp_debug(DEBUG_PPS_FILL,
-			  "pps_info_size   %d\n", pps_info_size);
+			  "pps_info_size   %u\n", pps_info_size);
 		mpp_debug(DEBUG_PPS_FILL,
-			  "scaling_list_addr_offset %d\n",
+			  "scaling_list_addr_offset %u\n",
 			  scaling_list_addr_offset);
 
 		if (pps_info_count) {
@@ -599,8 +614,11 @@ static int rkvdec_process_reg_fd(struct mpp_session *session,
 				 struct rkvdec_task *task,
 				 struct mpp_task_msgs *msgs)
 {
-	int ret = 0;
+	struct mpp_dev *mpp = mpp_get_task_used_device(&task->mpp_task, session);
 	u32 fmt = RKVDEC_GET_FORMAT(task->reg[RKVDEC_REG_SYS_CTRL_INDEX]);
+
+	if (!mpp || fmt >= RKVDEC_V1_FMT_BUTT)
+		return -EINVAL;
 
 	/*
 	 * special offset scale case
@@ -618,8 +636,7 @@ static int rkvdec_process_reg_fd(struct mpp_session *session,
 	 */
 	if (fmt == RKVDEC_FMT_VP9D) {
 		int fd;
-		u32 offset;
-		dma_addr_t iova = 0;
+		u64 offset = 0;
 		struct mpp_mem_region *mem_region = NULL;
 		int idx = RKVDEC_REG_VP9_REFCOLMV_BASE_INDEX;
 
@@ -630,25 +647,26 @@ static int rkvdec_process_reg_fd(struct mpp_session *session,
 			fd = task->reg[idx] & 0x3ff;
 			offset = task->reg[idx] >> 10 << 4;
 		}
+		offset += mpp_query_reg_offset_info(&task->off_inf, idx);
 		mem_region = mpp_task_attach_fd(&task->mpp_task, fd);
 		if (IS_ERR(mem_region)) {
 			mpp_err("reg[%03d]: %08x fd %d attach failed\n",
 				idx, task->reg[idx], fd);
-			return -EFAULT;
+			return -EINVAL;
 		}
 
-		iova = mem_region->iova;
-		task->reg[idx] = iova + offset;
+		if (offset > mem_region->len) {
+			mpp_err("reg[%03d]: fd %d offset %llu over buffer len %lx\n",
+				idx, fd, offset, mem_region->len);
+			return -EINVAL;
+		}
+
+		task->reg[idx] = mem_region->iova + offset;
 	}
 
-	ret = mpp_translate_reg_address(session, &task->mpp_task,
-					fmt, task->reg, &task->off_inf);
-	if (ret)
-		return ret;
-
-	mpp_translate_reg_offset_info(&task->mpp_task,
-				      &task->off_inf, task->reg);
-	return 0;
+	return mpp_translate_reg_address(session, &task->mpp_task,
+					&mpp->var->trans_info[fmt],
+					task->reg, &task->off_inf);
 }
 
 static int rkvdec_extract_task_msg(struct rkvdec_task *task,
@@ -673,7 +691,7 @@ static int rkvdec_extract_task_msg(struct rkvdec_task *task,
 			ret = mpp_check_req(req, 0, sizeof(task->reg),
 					    off_s, off_e);
 			if (ret)
-				continue;
+				return ret;
 			if (copy_from_user((u8 *)task->reg + req->offset,
 					   req->data, req->size)) {
 				mpp_err("copy_from_user reg failed\n");
@@ -693,7 +711,9 @@ static int rkvdec_extract_task_msg(struct rkvdec_task *task,
 			       req, sizeof(*req));
 		} break;
 		case MPP_CMD_SET_REG_ADDR_OFFSET: {
-			mpp_extract_reg_offset_info(&task->off_inf, req);
+			ret = mpp_extract_reg_offset_info(&task->off_inf, req);
+			if (ret)
+				return ret;
 		} break;
 		default:
 			break;
