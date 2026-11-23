@@ -26,6 +26,7 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
+#include <linux/capability.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/pm_domain.h>
@@ -436,7 +437,8 @@ static int rknpu_action(struct rknpu_device *rknpu_dev,
 		break;
 	case RKNPU_GET_VOLT:
 #ifndef FPGA_PLATFORM
-		args->value = regulator_get_voltage(rknpu_dev->vdd);
+		args->value = rknpu_dev->vdd ?
+			      regulator_get_voltage(rknpu_dev->vdd) : 0;
 #endif
 		ret = 0;
 		break;
@@ -485,10 +487,22 @@ static int rknpu_action(struct rknpu_device *rknpu_dev,
 		args->value = rknpu_dev->iommu_en;
 		ret = 0;
 		break;
-	case RKNPU_SET_PROC_NICE:
-		set_user_nice(current, *(int32_t *)&args->value);
+	case RKNPU_SET_PROC_NICE: {
+		int nice = *(int32_t *)&args->value;
+
+		/*
+		 * Same restriction as nice(2): raising the priority
+		 * (lowering the nice value) requires CAP_SYS_NICE.
+		 */
+		if (nice < task_nice(current) && !capable(CAP_SYS_NICE)) {
+			ret = -EPERM;
+			break;
+		}
+
+		set_user_nice(current, nice);
 		ret = 0;
 		break;
+	}
 	case RKNPU_GET_TOTAL_SRAM_SIZE:
 		if (rknpu_dev->sram_mm)
 			args->value = rknpu_dev->sram_mm->total_chunks *
@@ -562,26 +576,11 @@ static int rknpu_release(struct inode *inode, struct file *file)
 		entry = list_first_entry(&local_list, struct rknpu_mem_object,
 					 head);
 
-		LOG_DEBUG(
-			"Fd close free rknpu_obj: %#llx, rknpu_obj->dma_addr: %#llx\n",
-			(__u64)(uintptr_t)entry, (__u64)entry->dma_addr);
-
-		if (entry->kv_addr) {
-			struct iosys_map map =
-				IOSYS_MAP_INIT_VADDR(entry->kv_addr);
-			dma_buf_vunmap(entry->dmabuf, &map);
-			entry->kv_addr = NULL;
-		}
-
-		dma_buf_unmap_attachment(entry->attachment, entry->sgt,
-					 DMA_BIDIRECTIONAL);
-		dma_buf_detach(entry->dmabuf, entry->attachment);
-
-		if (!entry->owner)
-			dma_buf_put(entry->dmabuf);
+		LOG_DEBUG("Fd close free id: %u, rknpu_obj->dma_addr: %#llx\n",
+			  entry->id, (__u64)entry->dma_addr);
 
 		list_del(&entry->head);
-		kfree(entry);
+		rknpu_mem_object_put(entry);
 	}
 
 	kfree(session);
@@ -631,7 +630,7 @@ static long rknpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = rknpu_action_ioctl(rknpu_dev, arg);
 		break;
 	case RKNPU_SUBMIT:
-		ret = rknpu_submit_ioctl(rknpu_dev, arg);
+		ret = rknpu_submit_ioctl(rknpu_dev, file, arg);
 		break;
 	case RKNPU_MEM_CREATE:
 		ret = rknpu_mem_create_ioctl(rknpu_dev, file, cmd, arg);
@@ -642,7 +641,7 @@ static long rknpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = rknpu_mem_destroy_ioctl(rknpu_dev, file, arg);
 		break;
 	case RKNPU_MEM_SYNC:
-		ret = rknpu_mem_sync_ioctl(rknpu_dev, arg);
+		ret = rknpu_mem_sync_ioctl(rknpu_dev, file, arg);
 		break;
 	default:
 		break;

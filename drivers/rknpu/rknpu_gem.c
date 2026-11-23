@@ -17,6 +17,8 @@
 #include <linux/pfn_t.h>
 #include <linux/version.h>
 #include <linux/version_compat_defs.h>
+#include <linux/idr.h>
+#include <linux/random.h>
 #include <asm/cacheflush.h>
 
 #if KERNEL_VERSION(5, 10, 0) <= LINUX_VERSION_CODE
@@ -69,7 +71,7 @@ static int rknpu_gem_get_pages(struct rknpu_gem_object *rknpu_obj)
 	if (ret == 0) {
 		ret = -EFAULT;
 		LOG_DEV_ERROR(drm->dev, "%s: dma map %zu fail\n", __func__,
-			      rknpu_obj->size);
+			      (size_t)rknpu_obj->size);
 		goto free_sgt;
 	}
 	iommu_flush_iotlb_all(iommu_get_domain_for_dev(drm->dev));
@@ -743,7 +745,8 @@ rknpu_gem_object_create(struct drm_device *drm, unsigned int flags,
 					rknpu_dev->sram_mm->chunk_size;
 				LOG_WARN(
 					"mm allocate %zu failed, ret: %d, free size: %zu\n",
-					real_sram_size, ret, sram_free_size);
+					(size_t)real_sram_size, ret,
+					(size_t)sram_free_size);
 				real_sram_size = 0;
 			}
 		}
@@ -873,15 +876,45 @@ void rknpu_gem_object_destroy(struct rknpu_gem_object *rknpu_obj)
 	rknpu_iommu_domain_put(rknpu_dev);
 }
 
+/*
+ * Userspace refers to RKNPU objects by the obj_addr value that
+ * RKNPU_MEM_CREATE returns; librknnrt passes it back as obj_addr of
+ * RKNPU_MEM_SYNC and task_obj_addr of RKNPU_SUBMIT. That value used to be
+ * the object's kernel address, and the driver dereferenced whatever
+ * userspace passed in (an arbitrary kernel pointer) and leaked kernel
+ * addresses. obj_addr is now the GEM handle that RKNPU_MEM_CREATE already
+ * returns in its handle field, and an incoming value is only accepted if
+ * drm_gem_object_lookup() names an object in the calling DRM file's own
+ * handle table; a value that was never handed to this caller is rejected
+ * with -EINVAL. The ABI is unchanged: userspace treats obj_addr as an
+ * opaque token.
+ */
+struct rknpu_gem_object *rknpu_gem_object_get_by_handle(struct drm_file *file_priv,
+							u64 id)
+{
+	struct drm_gem_object *obj;
+
+	if (!file_priv || id > U32_MAX)
+		return NULL;
+
+	obj = drm_gem_object_lookup(file_priv, (u32)id);
+	if (!obj)
+		return NULL;
+
+	return to_rknpu_obj(obj);
+}
+
 int rknpu_gem_create_ioctl(struct drm_device *drm, void *data,
 			   struct drm_file *file_priv)
 {
 	struct rknpu_mem_create *args = data;
 	struct rknpu_gem_object *rknpu_obj = NULL;
+	bool found = true;
 	int ret = -EINVAL;
 
 	rknpu_obj = rknpu_gem_object_find(file_priv, args->handle);
 	if (!rknpu_obj) {
+		found = false;
 		rknpu_obj = rknpu_gem_object_create(drm, args->flags,
 						    args->size, args->sram_size,
 						    args->iommu_domain_id,
@@ -897,12 +930,13 @@ int rknpu_gem_create_ioctl(struct drm_device *drm, void *data,
 		}
 	}
 
-	// rknpu_gem_object_get(&rknpu_obj->base);
-
 	args->size = rknpu_obj->size;
 	args->sram_size = rknpu_obj->sram_size;
-	args->obj_addr = (__u64)(uintptr_t)rknpu_obj;
+	args->obj_addr = args->handle;
 	args->dma_addr = rknpu_obj->dma_addr;
+
+	if (found)
+		rknpu_gem_object_put(&rknpu_obj->base);
 
 	return 0;
 }
@@ -941,6 +975,7 @@ int rknpu_gem_destroy_ioctl(struct drm_device *drm, void *data,
 		if (ret && ++wait_count >= 3) {
 			LOG_DEV_ERROR(rknpu_dev->dev,
 				      "failed to destroy memory\n");
+			rknpu_gem_object_put(&rknpu_obj->base);
 			return ret;
 		}
 	} while (ret);
@@ -948,6 +983,7 @@ int rknpu_gem_destroy_ioctl(struct drm_device *drm, void *data,
 	ret = rknpu_gem_handle_destroy(file_priv, args->handle);
 
 	rknpu_iommu_domain_put(rknpu_dev);
+	rknpu_gem_object_put(&rknpu_obj->base);
 
 	return ret;
 }
@@ -1238,14 +1274,19 @@ int rknpu_gem_dumb_map_offset(struct drm_file *file_priv,
 
 	/* Don't allow imported objects to be mapped */
 	obj = &rknpu_obj->base;
-	if (obj->import_attach)
+	if (obj->import_attach) {
+		rknpu_gem_object_put(obj);
 		return -EINVAL;
+	}
 
 	ret = drm_gem_create_mmap_offset(obj);
-	if (ret)
+	if (ret) {
+		rknpu_gem_object_put(obj);
 		return ret;
+	}
 
 	*offset = drm_vma_node_offset_addr(&obj->vma_node);
+	rknpu_gem_object_put(obj);
 
 	return 0;
 }
@@ -1558,9 +1599,15 @@ static int rknpu_cache_sync_with_sg(struct rknpu_device *rknpu_dev,
 				       *length :
 				       s->length - *offset;
 		if (dir & RKNPU_MEM_SYNC_TO_DEVICE) {
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE && defined(CONFIG_ARM64)
 			__dma_map_area(cache_start, cache_length,
 				       DMA_TO_DEVICE);
+#elif KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+			/*
+			 * arm32 pre-6.1: no exported per-direction cache
+			 * helper exists and no in-scope SoC carries NPU
+			 * SRAM/NBUF, so the raw sync is compiled out.
+			 */
 #else
 			dcache_clean_poc((unsigned long)cache_start,
 					 (unsigned long)cache_start +
@@ -1569,9 +1616,15 @@ static int rknpu_cache_sync_with_sg(struct rknpu_device *rknpu_dev,
 		}
 
 		if (dir & RKNPU_MEM_SYNC_FROM_DEVICE) {
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE && defined(CONFIG_ARM64)
 			__dma_unmap_area(cache_start, cache_length,
 					 DMA_FROM_DEVICE);
+#elif KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+			/*
+			 * arm32 pre-6.1: no exported per-direction cache
+			 * helper exists and no in-scope SoC carries NPU
+			 * SRAM/NBUF, so the raw sync is compiled out.
+			 */
 #else
 			dcache_inval_poc((unsigned long)cache_start,
 					 (unsigned long)cache_start +
@@ -1631,9 +1684,15 @@ static int rknpu_cache_sync(struct rknpu_gem_object *rknpu_obj,
 				       *length :
 				       cache_size - *offset;
 		if (dir & RKNPU_MEM_SYNC_TO_DEVICE) {
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE && defined(CONFIG_ARM64)
 			__dma_map_area(cache_start, cache_length,
 				       DMA_TO_DEVICE);
+#elif KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+			/*
+			 * arm32 pre-6.1: no exported per-direction cache
+			 * helper exists and no in-scope SoC carries NPU
+			 * SRAM/NBUF, so the raw sync is compiled out.
+			 */
 #else
 			dcache_clean_poc((unsigned long)cache_start,
 					 (unsigned long)cache_start +
@@ -1642,9 +1701,15 @@ static int rknpu_cache_sync(struct rknpu_gem_object *rknpu_obj,
 		}
 
 		if (dir & RKNPU_MEM_SYNC_FROM_DEVICE) {
-#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE && defined(CONFIG_ARM64)
 			__dma_unmap_area(cache_start, cache_length,
 					 DMA_FROM_DEVICE);
+#elif KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+			/*
+			 * arm32 pre-6.1: no exported per-direction cache
+			 * helper exists and no in-scope SoC carries NPU
+			 * SRAM/NBUF, so the raw sync is compiled out.
+			 */
 #else
 			dcache_inval_poc((unsigned long)cache_start,
 					 (unsigned long)cache_start +
@@ -1664,12 +1729,11 @@ static int rknpu_cache_sync(struct rknpu_gem_object *rknpu_obj,
 	return 0;
 }
 
-int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
-			 struct drm_file *file_priv)
+static int rknpu_gem_sync_obj(struct drm_device *dev,
+			      struct rknpu_gem_object *rknpu_obj,
+			      struct rknpu_mem_sync *args)
 {
-	struct rknpu_gem_object *rknpu_obj = NULL;
 	struct rknpu_device *rknpu_dev = dev->dev_private;
-	struct rknpu_mem_sync *args = data;
 	struct scatterlist *sg;
 	dma_addr_t sg_phys_addr;
 	unsigned long length, offset = 0;
@@ -1677,8 +1741,8 @@ int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
 	unsigned long len = 0;
 	int i;
 
-	rknpu_obj = (struct rknpu_gem_object *)(uintptr_t)args->obj_addr;
-	if (!rknpu_obj)
+	if (args->offset > rknpu_obj->size ||
+	    args->size > rknpu_obj->size - args->offset)
 		return -EINVAL;
 
 	if (!(rknpu_obj->flags & RKNPU_MEM_CACHEABLE))
@@ -1754,4 +1818,21 @@ int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
 	rknpu_iommu_domain_put(rknpu_dev);
 
 	return 0;
+}
+
+int rknpu_gem_sync_ioctl(struct drm_device *dev, void *data,
+			 struct drm_file *file_priv)
+{
+	struct rknpu_mem_sync *args = data;
+	struct rknpu_gem_object *rknpu_obj;
+	int ret;
+
+	rknpu_obj = rknpu_gem_object_get_by_handle(file_priv, args->obj_addr);
+	if (!rknpu_obj)
+		return -EINVAL;
+
+	ret = rknpu_gem_sync_obj(dev, rknpu_obj, args);
+	rknpu_gem_object_put(&rknpu_obj->base);
+
+	return ret;
 }

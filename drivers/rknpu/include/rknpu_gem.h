@@ -80,6 +80,9 @@ rknpu_gem_object_create(struct drm_device *dev, unsigned int flags,
 void rknpu_gem_object_destroy(struct rknpu_gem_object *rknpu_obj);
 
 /* request gem object creation and buffer allocation as the size */
+struct rknpu_gem_object *rknpu_gem_object_get_by_handle(struct drm_file *file_priv,
+							u64 id);
+
 int rknpu_gem_create_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 
@@ -133,8 +136,6 @@ rknpu_gem_object_find(struct drm_file *filp, unsigned int handle)
 		// DRM_ERROR("failed to lookup gem object.\n");
 		return NULL;
 	}
-
-	rknpu_gem_object_put(obj);
 
 	return to_rknpu_obj(obj);
 }

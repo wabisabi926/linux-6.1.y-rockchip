@@ -100,7 +100,7 @@ static ssize_t rknpu_power_set(struct file *file, const char __user *ubuf,
 		container_of(debugger, struct rknpu_device, debugger);
 	char buf[8];
 
-	if (len > sizeof(buf) - 1)
+	if (!len || len > sizeof(buf) - 1)
 		return -EINVAL;
 	if (copy_from_user(buf, ubuf, len))
 		return -EFAULT;
@@ -154,7 +154,7 @@ static ssize_t rknpu_power_put_delay_set(struct file *file,
 	unsigned long power_put_delay = 0;
 	int ret = 0;
 
-	if (len > sizeof(buf) - 1)
+	if (!len || len > sizeof(buf) - 1)
 		return -EINVAL;
 	if (copy_from_user(buf, ubuf, len))
 		return -EFAULT;
@@ -207,7 +207,7 @@ static ssize_t rknpu_freq_set(struct file *file, const char __user *ubuf,
 	unsigned long freq = 0;
 	int ret = 0;
 
-	if (len > sizeof(buf) - 1)
+	if (!len || len > sizeof(buf) - 1)
 		return -EINVAL;
 	if (copy_from_user(buf, ubuf, len))
 		return -EFAULT;
@@ -252,7 +252,8 @@ static int rknpu_volt_show(struct seq_file *m, void *data)
 		container_of(debugger, struct rknpu_device, debugger);
 	unsigned long current_volt = 0;
 
-	current_volt = regulator_get_voltage(rknpu_dev->vdd);
+	if (rknpu_dev->vdd)
+		current_volt = regulator_get_voltage(rknpu_dev->vdd);
 
 	seq_printf(m, "%lu\n", current_volt);
 
@@ -284,7 +285,7 @@ static ssize_t rknpu_reset_set(struct file *file, const char __user *ubuf,
 		container_of(debugger, struct rknpu_device, debugger);
 	char buf[8];
 
-	if (len > sizeof(buf) - 1)
+	if (!len || len > sizeof(buf) - 1)
 		return -EINVAL;
 	if (copy_from_user(buf, ubuf, len))
 		return -EFAULT;
